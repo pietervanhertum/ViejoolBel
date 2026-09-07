@@ -8,6 +8,19 @@
 </div>
 {% endif %}
 
+{% if health %}
+  {% if health.level.value == 'ok' %}
+  <div class="banner ok">✅ Systeem gezond — alle controles OK.</div>
+  {% else %}
+  <div class="banner {{ 'err' if health.level.value == 'error' else 'warn' }}">
+    {{ '⛔' if health.level.value == 'error' else '⚠️' }} Er is iets mis:
+    <ul>
+      {% for c in health.problems %}<li><strong>{{ c.name }}</strong>: {{ c.detail }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+{% endif %}
+
 <section class="card">
   <h1>Vandaag</h1>
   <p class="big">{{ now.strftime('%A %d/%m/%Y — %H:%M:%S') }}</p>
@@ -69,6 +82,25 @@
     </tbody>
   </table>
   {% else %}<p>Nog geen bellen geregistreerd.</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Meldingen bij problemen</h2>
+  <p class="muted">Webhook (bv. ntfy.sh, Discord, Slack) krijgt een melding zodra
+  er iets misgaat. Heartbeat-URL (bv. healthchecks.io) waarschuwt jou als het
+  toestel helemaal offline of uit gaat.</p>
+  <form method="post" action="/api/notify-settings" onsubmit="return postForm(this)">
+    <label>Webhook-URL (alerts)
+      <input name="notify_webhook_url" value="{{ webhook_url }}" placeholder="https://ntfy.sh/mijn-school-bel">
+    </label>
+    <label>Heartbeat-URL (dead man's switch)
+      <input name="heartbeat_url" value="{{ heartbeat_url }}" placeholder="https://hc-ping.com/xxxxxxxx">
+    </label>
+    <button type="submit">Opslaan</button>
+  </form>
+  <form method="post" action="/api/notify-test" class="inline" onsubmit="return postForm(this)">
+    <button type="submit">Stuur testmelding</button>
+  </form>
 </section>
 
 <section class="card">

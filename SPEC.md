@@ -63,6 +63,13 @@ referenced from code and tests.
 - **FR-24** Every ring (scheduled/manual/button/test) and every config change is
   recorded in an **audit log** viewable in the UI.
 - **FR-25** A **self-test** verifies audio and relay output on demand.
+- **FR-26** The device **recovers automatically after a power cut**: the service
+  is enabled at boot and restarts unattended; a hung process is killed and
+  restarted by the systemd watchdog.
+- **FR-27** The device **reports faults**: a health monitor evaluates the system
+  and, on a fault, sends an outbound **webhook alert**; while healthy it sends a
+  periodic **heartbeat** so an external service can detect an offline/powered-down
+  device. Faults are also shown on the dashboard.
 
 ## 3. Domain semantics
 - A **DayResolution** for a date is either `CLOSED` or a `DayType`.

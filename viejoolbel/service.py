@@ -13,6 +13,7 @@ from .db import init_engine
 from .hardware import make_hardware
 from .hardware.base import BellHardware
 from .models import RingSource
+from .monitor import HealthMonitor
 from .scheduler import BellScheduler
 
 if TYPE_CHECKING:
@@ -70,13 +71,16 @@ class Service:
         self.controller = BellController(self.hardware, settings)
         self.scheduler = BellScheduler(self.controller, settings.timezone)
         self.button = ButtonWatcher(self.hardware, self.controller)
+        self.monitor = HealthMonitor(settings, scheduler_is_alive=self.scheduler.is_alive)
 
     def start(self) -> None:
         self.scheduler.start()
         self.button.start()
+        self.monitor.start()
         log.info("ViejoolBel service started (hardware=%s).", type(self.hardware).__name__)
 
     def stop(self) -> None:
+        self.monitor.stop()
         self.button.stop()
         self.scheduler.shutdown()
         self.hardware.cleanup()
@@ -84,4 +88,4 @@ class Service:
     def build_app(self) -> FastAPI:
         from .web.app import create_app
 
-        return create_app(self.controller, self.scheduler, self.settings)
+        return create_app(self.controller, self.scheduler, self.settings, monitor=self.monitor)

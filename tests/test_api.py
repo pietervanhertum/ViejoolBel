@@ -125,3 +125,25 @@ def test_change_password_rejects_short(auth_client: TestClient):
 def test_backup_returns_config(auth_client: TestClient):
     body = auth_client.get("/api/backup").json()
     assert "day_types" in body and body["day_types"]
+
+
+def test_health_endpoint(auth_client: TestClient):
+    body = auth_client.get("/api/health").json()
+    assert "level" in body and "checks" in body
+    assert any(c["name"] == "scheduler" for c in body["checks"])
+
+
+def test_notify_settings_roundtrip(auth_client: TestClient):
+    resp = auth_client.post(
+        "/api/notify-settings",
+        data={"notify_webhook_url": "https://ntfy.sh/mine", "heartbeat_url": "https://hc/x"},
+    )
+    assert resp.status_code == 200
+    got = auth_client.get("/api/notify-settings").json()
+    assert got["notify_webhook_url"] == "https://ntfy.sh/mine"
+    assert got["heartbeat_url"] == "https://hc/x"
+
+
+def test_notify_test_requires_url(auth_client: TestClient):
+    auth_client.post("/api/notify-settings", data={"notify_webhook_url": "", "heartbeat_url": ""})
+    assert auth_client.post("/api/notify-test").status_code == 400

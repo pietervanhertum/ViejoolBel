@@ -21,8 +21,15 @@ Initial foundation of the modern, calendar-aware school bell system.
 - APScheduler-based scheduler that plans precise ring jobs per day (no 1 Hz
   polling) and re-plans on config change and daily.
 - Safe self-updater design with atomic release swap and automatic rollback.
+- **Self-healing**: `Type=notify` systemd unit with a real watchdog (the app pets
+  it from a health-monitor thread via `sd_notify`), `Restart=always`, and
+  boot-time auto-start so the device recovers unattended after a power cut.
+- **Fault reporting**: a health monitor evaluates clock/scheduler/rings/disk,
+  sends a webhook alert on fault transitions (ntfy/Discord/Slack/custom), sends a
+  heartbeat while healthy (dead-man's-switch), and shows status on the dashboard;
+  `/api/health` and UI-editable notification settings included.
 - Deployment: systemd unit (with watchdog + hardening), installer, scoped sudoers,
   privileged update helper, WiFi access-point onboarding, Tailscale remote support.
 - Tests (pytest), linting (ruff), typing (mypy), and GitHub Actions CI.
 - Design and specification documents plus hardware/installation/onboarding/
-  remote-support guides.
+  remote-support guides, and **printable Dutch install + user guides**.

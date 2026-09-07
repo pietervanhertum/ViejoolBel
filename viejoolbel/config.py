@@ -49,6 +49,23 @@ class Settings(BaseSettings):
     # Where releases are checked out; the "current" symlink points at the active one.
     releases_dir: Path = Field(default=Path("/opt/viejoolbel/releases"))
 
+    # --- Health monitoring & alerting ---
+    # How often the monitor evaluates health and pings the systemd watchdog (s).
+    monitor_tick_seconds: float = 10.0
+    # How often a full health evaluation runs (s).
+    health_interval_seconds: float = 60.0
+    # Generic outbound webhook for fault alerts (ntfy.sh, Discord, Slack, Home
+    # Assistant, custom). Empty = disabled. Can also be set from the web UI.
+    notify_webhook_url: str = ""
+    # Optional "dead man's switch": the device pings this URL periodically while
+    # healthy (e.g. healthchecks.io). If pings stop, that service alerts you —
+    # this is what catches a device that is fully offline or powered down.
+    heartbeat_url: str = ""
+    heartbeat_interval_seconds: float = 900.0
+    # Minimum plausible year; a system clock below this means the clock is unset
+    # (no RTC, no NTP) and rings would be wrong (see docs/hardware.md).
+    min_plausible_year: int = 2024
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "viejoolbel.db"

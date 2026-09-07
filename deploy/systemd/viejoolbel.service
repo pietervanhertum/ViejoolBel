@@ -1,10 +1,15 @@
 [Unit]
 Description=ViejoolBel school bell system
-After=network-online.target sound.target
+After=network-online.target sound.target time-sync.target
 Wants=network-online.target
+# Never stop trying to restart the bell service, even after repeated crashes.
+StartLimitIntervalSec=0
 
 [Service]
-Type=simple
+# Type=notify so the app signals READY=1 on startup and pets the systemd
+# watchdog (WATCHDOG=1); a hung process is then killed and restarted (NFR-2).
+Type=notify
+NotifyAccess=all
 User=viejoolbel
 Group=viejoolbel
 # The "current" symlink is flipped atomically by the updater (see apply_update.sh).
@@ -13,9 +18,11 @@ Environment=VIEJOOLBEL_DATA_DIR=/var/lib/viejoolbel
 Environment=VIEJOOLBEL_HARDWARE=auto
 EnvironmentFile=-/etc/viejoolbel/viejoolbel.env
 ExecStart=/opt/viejoolbel/current/.venv/bin/viejoolbel run
-Restart=on-failure
+# Always come back — after a crash and automatically after a power cut on boot.
+Restart=always
 RestartSec=3
-# Watchdog: the app pings systemd while healthy (NFR-2).
+TimeoutStartSec=60
+# The health monitor pings the watchdog every ~10 s; 30 s gives ample margin.
 WatchdogSec=30
 # Hardening
 NoNewPrivileges=true

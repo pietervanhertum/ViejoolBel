@@ -30,6 +30,11 @@ a clean, tested, from-scratch implementation on a modern stack.
 - ⬆️ **Safe self-update** — an update button pulls a new tagged release from this
   repository, applies it atomically, and **rolls back automatically** if the new
   version fails its health check.
+- 🔁 **Self-healing** — starts automatically after a power cut and is supervised by
+  the systemd watchdog; a hung process is restarted on its own.
+- 🚨 **Fault reporting** — a health monitor raises a webhook alert when something
+  breaks and sends a heartbeat so you're warned even if the device goes fully
+  offline.
 - 🧪 **Runs and is tested on any machine** — the hardware layer has a mock driver,
   so the whole system can be developed and tested without a Raspberry Pi.
 
@@ -43,6 +48,8 @@ a clean, tested, from-scratch implementation on a modern stack.
 | [`docs/installation.md`](docs/installation.md) | Flashing & installing on the Pi |
 | [`docs/onboarding.md`](docs/onboarding.md) | Headless first-boot WiFi setup |
 | [`docs/remote-support.md`](docs/remote-support.md) | Tailscale remote access |
+| [`docs/PRINT-installatie.md`](docs/PRINT-installatie.md) | **Printable** Dutch install guide (for the installer) |
+| [`docs/PRINT-handleiding.md`](docs/PRINT-handleiding.md) | **Printable** Dutch user guide (for school staff) |
 
 ## Quick start (development, no Raspberry Pi needed)
 

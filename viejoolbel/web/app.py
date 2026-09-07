@@ -31,6 +31,8 @@ from ..models import (
     RingSource,
     Sound,
 )
+from ..monitor import HealthMonitor
+from ..notify import Notifier
 from ..schedule_service import planned_rings_for, resolution_for
 from ..scheduler import BellScheduler
 
@@ -54,12 +56,14 @@ def create_app(
     controller: BellController,
     scheduler: BellScheduler,
     settings: Settings,
+    monitor: HealthMonitor | None = None,
 ) -> FastAPI:
     app = FastAPI(title="ViejoolBel", version=__version__)
     app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, max_age=7 * 24 * 3600)
     app.state.controller = controller
     app.state.scheduler = scheduler
     app.state.settings = settings
+    app.state.monitor = monitor
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     if STATIC_DIR.exists():
@@ -105,6 +109,9 @@ def create_app(
             )
             silenced = get_setting(s, "silence_date", "") == now.date().isoformat()
             default_pw = auth.uses_default_password(s)
+            webhook_url = get_setting(s, "notify_webhook_url", settings.notify_webhook_url)
+            heartbeat_url = get_setting(s, "heartbeat_url", settings.heartbeat_url)
+        report = monitor.evaluate_once() if monitor is not None else None
         return templates.TemplateResponse(
             request,
             "dashboard.html",
@@ -119,6 +126,9 @@ def create_app(
                 "silenced": silenced,
                 "default_pw": default_pw,
                 "is_ringing": controller.is_ringing,
+                "health": report,
+                "webhook_url": webhook_url,
+                "heartbeat_url": heartbeat_url,
             },
         )
 
@@ -142,6 +152,51 @@ def create_app(
                 "is_ringing": controller.is_ringing,
             }
         )
+
+    # --- health & alerting ----------------------------------------------
+    @app.get("/api/health")
+    def health(_: LoggedIn) -> JSONResponse:
+        if monitor is None:
+            return JSONResponse({"level": "unknown", "checks": []})
+        report = monitor.evaluate_once()
+        return JSONResponse(report.as_dict())
+
+    @app.get("/api/notify-settings")
+    def get_notify_settings(_: LoggedIn) -> JSONResponse:
+        with session_scope() as s:
+            return JSONResponse(
+                {
+                    "notify_webhook_url": get_setting(
+                        s, "notify_webhook_url", settings.notify_webhook_url
+                    ),
+                    "heartbeat_url": get_setting(s, "heartbeat_url", settings.heartbeat_url),
+                }
+            )
+
+    @app.post("/api/notify-settings")
+    def set_notify_settings(
+        _: LoggedIn,
+        notify_webhook_url: Annotated[str, Form()] = "",
+        heartbeat_url: Annotated[str, Form()] = "",
+    ) -> JSONResponse:
+        with session_scope() as s:
+            set_setting(s, "notify_webhook_url", notify_webhook_url.strip())
+            set_setting(s, "heartbeat_url", heartbeat_url.strip())
+        return JSONResponse({"ok": True})
+
+    @app.post("/api/notify-test")
+    def notify_test(_: LoggedIn) -> JSONResponse:
+        with session_scope() as s:
+            url = get_setting(s, "notify_webhook_url", settings.notify_webhook_url)
+        if not url:
+            raise HTTPException(400, "No webhook URL configured")
+        ok = Notifier().alert(
+            url,
+            level="ok",
+            title="ViejoolBel testmelding",
+            message="Dit is een testmelding vanuit ViejoolBel.",
+        )
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 502)
 
     # --- manual control --------------------------------------------------
     @app.post("/api/ring-now")

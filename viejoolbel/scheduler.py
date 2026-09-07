@@ -45,6 +45,9 @@ class BellScheduler:
         if self._scheduler.running:
             self._scheduler.shutdown(wait=False)
 
+    def is_alive(self) -> bool:
+        return self._scheduler.running
+
     def now(self) -> dt.datetime:
         return dt.datetime.now(self._tz)
 

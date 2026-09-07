@@ -31,4 +31,7 @@ th, td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid var(-
 .muted { color: var(--muted); font-size: .9rem; }
 .banner { padding: .75rem 1rem; border-radius: 10px; margin-bottom: 1rem; }
 .banner.warn { background: #fef3c7; color: var(--warn); }
+.banner.ok { background: #dcfce7; color: var(--ok); }
+.banner.err { background: #fee2e2; color: var(--err); }
+.banner ul { margin: .4rem 0 0; padding-left: 1.2rem; }
 footer { text-align: center; color: var(--muted); padding: 1rem; }

@@ -123,7 +123,10 @@ class RingLog(Base):
     __tablename__ = "ring_log"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[dt.datetime] = mapped_column(DateTime, default=lambda: dt.datetime.now(dt.UTC))
+    # Stored as naive UTC for consistent comparisons across SQLite.
+    ts: Mapped[dt.datetime] = mapped_column(
+        DateTime, default=lambda: dt.datetime.now(dt.UTC).replace(tzinfo=None)
+    )
     source: Mapped[RingSource] = mapped_column(Enum(RingSource))
     sound_name: Mapped[str] = mapped_column(String(120), default="")
     used_audio: Mapped[bool] = mapped_column(Boolean, default=False)
