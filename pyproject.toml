@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "viejoolbel"
+version = "0.1.0"
+description = "Modern, calendar-aware school bell system for the Raspberry Pi"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "pietervanhertum" }]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "apscheduler>=3.10,<4",
+    "sqlalchemy>=2.0",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "bcrypt>=4.0",
+    "itsdangerous>=2.1",
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+# Installed only on the Raspberry Pi. Kept optional so the whole app can be
+# developed, run and tested on any machine using the mock hardware driver.
+pi = [
+    "RPi.GPIO>=0.7; platform_machine=='armv7l' or platform_machine=='aarch64'",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+    "ruff>=0.4",
+    "mypy>=1.9",
+]
+
+[project.scripts]
+viejoolbel = "viejoolbel.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["viejoolbel*"]
+
+[tool.setuptools.package-data]
+"viejoolbel.web" = ["templates/*.html", "static/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W", "C4", "SIM"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}ViejoolBel — Overzicht{% endblock %}
+{% block content %}
+
+{% if default_pw %}
+<div class="banner warn">
+  ⚠️ Je gebruikt nog het standaardwachtwoord. Stel hieronder een eigen wachtwoord in.
+</div>
+{% endif %}
+
+<section class="card">
+  <h1>Vandaag</h1>
+  <p class="big">{{ now.strftime('%A %d/%m/%Y — %H:%M:%S') }}</p>
+  {% if resolution.closed %}
+    <p class="status closed">Gesloten — {{ resolution.reason }} (geen automatische bellen)</p>
+  {% else %}
+    <p class="status open">Open — {{ resolution.reason }}</p>
+  {% endif %}
+  {% if silenced %}<p class="status closed">🔕 “Vandaag stil” staat aan.</p>{% endif %}
+  {% if next_ring %}<p>Volgende bel: <strong>{{ next_ring.strftime('%H:%M') }}</strong></p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Bel nu</h2>
+  <form method="post" action="/api/ring-now" class="row" onsubmit="return postForm(this)">
+    <select name="sound_id">
+      <option value="">(alleen relais)</option>
+      {% for snd in sounds %}<option value="{{ snd.id }}">{{ snd.name }}</option>{% endfor %}
+    </select>
+    <input type="number" name="duration" value="8" min="1" max="120" title="duur (s)">
+    <label class="chk"><input type="checkbox" name="use_audio" checked> audio</label>
+    <label class="chk"><input type="checkbox" name="use_relay" checked> relais</label>
+    <button class="primary" type="submit">🔔 Bel nu</button>
+  </form>
+  <form method="post" action="/api/self-test" class="inline" onsubmit="return postForm(this)">
+    <button type="submit">Zelftest</button>
+  </form>
+  <form method="post" action="/api/silence-today" class="inline" onsubmit="return postForm(this)">
+    <input type="hidden" name="on" value="{{ 'false' if silenced else 'true' }}">
+    <button type="submit">{{ 'Vandaag weer inschakelen' if silenced else 'Vandaag stil' }}</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Rooster vandaag</h2>
+  {% if plan %}
+  <table>
+    <thead><tr><th>Tijd</th><th>Label</th><th>Audio</th><th>Relais</th></tr></thead>
+    <tbody>
+    {% for p in plan %}
+      <tr><td>{{ p.at.strftime('%H:%M') }}</td><td>{{ p.label }}</td>
+          <td>{{ '✓' if p.use_audio else '' }}</td><td>{{ '✓' if p.use_relay else '' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p>Geen bellen gepland voor vandaag.</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Recente bellen</h2>
+  {% if recent %}
+  <table>
+    <thead><tr><th>Wanneer</th><th>Bron</th><th>Geluid</th><th>OK</th></tr></thead>
+    <tbody>
+    {% for r in recent %}
+      <tr><td>{{ r.ts.strftime('%d/%m %H:%M') }}</td><td>{{ r.source.value }}</td>
+          <td>{{ r.sound_name }}</td><td>{{ '✓' if r.ok else '✗' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p>Nog geen bellen geregistreerd.</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Wachtwoord wijzigen</h2>
+  <form method="post" action="/api/password" class="row" onsubmit="return postForm(this)">
+    <input type="password" name="new_password" placeholder="nieuw wachtwoord" required>
+    <button type="submit">Opslaan</button>
+  </form>
+</section>
+
+<p class="muted">Beheer roosters, dagtypes, kalender en geluiden via de API onder <code>/api</code> — de volledige beheer-UI komt in een volgende iteratie.</p>
+
+<script src="/static/app.js"></script>
+{% endblock %}

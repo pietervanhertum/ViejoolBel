@@ -1,0 +1,27 @@
+[Unit]
+Description=ViejoolBel school bell system
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=viejoolbel
+Group=viejoolbel
+# The "current" symlink is flipped atomically by the updater (see apply_update.sh).
+WorkingDirectory=/opt/viejoolbel/current
+Environment=VIEJOOLBEL_DATA_DIR=/var/lib/viejoolbel
+Environment=VIEJOOLBEL_HARDWARE=auto
+EnvironmentFile=-/etc/viejoolbel/viejoolbel.env
+ExecStart=/opt/viejoolbel/current/.venv/bin/viejoolbel run
+Restart=on-failure
+RestartSec=3
+# Watchdog: the app pings systemd while healthy (NFR-2).
+WatchdogSec=30
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
