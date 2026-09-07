@@ -3,6 +3,21 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.2] - 2026-09-07
+
+### Fixed
+- **Update check reported "up to date" for a valid newer release** when the
+  release tag had unusual punctuation (e.g. `v.0.1.1`). Version parsing now
+  extracts the numbers from a tag, tolerating prefixes and stray separators
+  (`v0.1.1`, `0.1.1`, `v.0.1.1`, `release-0.1.1` all compare correctly), and the
+  apply endpoint accepts any argv-safe tag containing a digit.
+
+### Added
+- **Private-repository support for updates.** `check_latest` sends a
+  `Bearer` token and `apply_update.sh` clones with it, read from
+  `VIEJOOLBEL_GITHUB_TOKEN` in `/etc/viejoolbel/viejoolbel.env`, so both the
+  update button and the CLI work on a private repo. See `docs/github-auth.md`.
+
 ## [0.1.1] - 2026-09-07
 
 Initial release of the modern, calendar-aware school bell system, with the

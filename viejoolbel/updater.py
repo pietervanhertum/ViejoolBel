@@ -26,9 +26,12 @@ from . import __version__
 
 log = logging.getLogger(__name__)
 
-# Release tags we accept, e.g. "v0.2.0" or "0.2.0". Anything else is rejected
-# before it can reach the shell command (defence in depth; the call is argv-based).
-_TAG_RE = re.compile(r"^v?\d+(\.\d+){0,3}$")
+# A tag is accepted for `apply` if it contains a digit and only characters that are
+# safe as a single argv element (defence in depth; the call is argv-based, not a
+# shell). This is deliberately lenient — e.g. "v0.1.1", "0.1.1" and even a
+# mistyped "v.0.1.1" all pass — because a strict pattern silently turned a typo'd
+# release tag into "you're up to date". See _version_tuple() for comparison.
+_TAG_SAFE_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 
 
 @dataclass(frozen=True)
@@ -44,12 +47,19 @@ def _api_url(repo: str) -> str:
     return f"https://api.github.com/repos/{owner_name}/releases/latest"
 
 
-def check_latest(repo: str, *, timeout: float = 10.0) -> ReleaseInfo | None:
-    """Query the repository's latest release. Returns None if none/unreachable."""
+def check_latest(
+    repo: str, *, token: str | None = None, timeout: float = 10.0
+) -> ReleaseInfo | None:
+    """Query the repository's latest release. Returns None if none/unreachable.
+
+    Pass *token* (a GitHub PAT or fine-grained token) to reach a **private**
+    repository's API; without it the API returns 404 for private repos.
+    """
+    headers = {"Accept": "application/vnd.github+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try:
-        req = urllib.request.Request(
-            _api_url(repo), headers={"Accept": "application/vnd.github+json"}
-        )
+        req = urllib.request.Request(_api_url(repo), headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (trusted host)
             data = json.load(resp)
     except Exception as exc:
@@ -65,27 +75,29 @@ def current_version() -> str:
     return __version__
 
 
+def _version_tuple(text: str) -> tuple[int, ...] | None:
+    """Extract a numeric version tuple from a tag, tolerant of prefixes and stray
+    punctuation: "v0.1.1", "0.1.1", "v.0.1.1" and "release-0.1.1" all yield
+    (0, 1, 1). Returns None only when there is no number at all."""
+    nums = re.findall(r"\d+", text)
+    if not nums:
+        return None
+    return tuple(int(n) for n in nums[:4])
+
+
 def is_newer(latest_tag: str, current: str | None = None) -> bool:
-    """Compare ``vX.Y.Z`` style tags. Missing/odd tags are treated as not-newer
-    to fail safe (we never auto-apply something we cannot reason about)."""
-    cur = current or current_version()
-
-    def parse(t: str) -> tuple[int, ...] | None:
-        t = t.lstrip("vV").strip()
-        parts = t.split(".")
-        try:
-            return tuple(int(p) for p in parts)
-        except ValueError:
-            return None
-
-    a, b = parse(latest_tag), parse(cur)
+    """True when *latest_tag* is a strictly newer version than *current* (or the
+    running version). Unparseable input fails safe to not-newer."""
+    a, b = _version_tuple(latest_tag), _version_tuple(current or current_version())
     if a is None or b is None:
         return False
     return a > b
 
 
 def is_valid_tag(tag: str) -> bool:
-    return bool(_TAG_RE.match(tag.strip()))
+    """Accept a tag for `apply`: at least one digit and only argv-safe characters."""
+    tag = tag.strip()
+    return bool(_TAG_SAFE_RE.match(tag)) and any(c.isdigit() for c in tag)
 
 
 def launch_update(tag: str, script: Path) -> tuple[bool, str]:

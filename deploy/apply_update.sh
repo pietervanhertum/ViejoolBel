@@ -14,11 +14,27 @@ set -euo pipefail
 TAG="${1:?usage: apply_update.sh <git-tag>}"
 OPT_DIR="/opt/viejoolbel"
 RELEASES_DIR="${OPT_DIR}/releases"
+ENV_FILE="/etc/viejoolbel/viejoolbel.env"
+
+# Load VIEJOOLBEL_UPDATE_REPO and (for a private repo) VIEJOOLBEL_GITHUB_TOKEN.
+if [[ -f "${ENV_FILE}" ]]; then
+  set -a; . "${ENV_FILE}"; set +a
+fi
+
 REPO="${VIEJOOLBEL_UPDATE_REPO:-https://github.com/pietervanhertum/ViejoolBel}"
 NEW_DIR="${RELEASES_DIR}/${TAG}"
 PREV_TARGET="$(readlink -f "${OPT_DIR}/current" || true)"
 
 log() { echo "[apply_update] $*"; }
+
+# Build the clone URL, injecting a token for a private repo when one is set.
+clone_url() {
+  if [[ -n "${VIEJOOLBEL_GITHUB_TOKEN:-}" && "${REPO}" == https://github.com/* ]]; then
+    echo "https://x-access-token:${VIEJOOLBEL_GITHUB_TOKEN}@github.com/${REPO#https://github.com/}"
+  else
+    echo "${REPO}"
+  fi
+}
 
 health_check() {
   # Import the app and boot the FastAPI app against mock hardware; exit non-zero
@@ -29,7 +45,7 @@ health_check() {
 
 log "Fetching ${TAG} from ${REPO}"
 rm -rf "${NEW_DIR}"
-git clone --depth 1 --branch "${TAG}" "${REPO}" "${NEW_DIR}"
+git clone --depth 1 --branch "${TAG}" "$(clone_url)" "${NEW_DIR}"
 
 log "Building virtualenv"
 python3 -m venv "${NEW_DIR}/.venv"

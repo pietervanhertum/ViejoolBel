@@ -822,7 +822,7 @@ def create_app(
     @app.get("/api/update/check")
     def update_check(_: LoggedIn) -> JSONResponse:
         current = updater.current_version()
-        info = updater.check_latest(settings.update_repo)
+        info = updater.check_latest(settings.update_repo, token=settings.github_token or None)
         if info is None:
             return JSONResponse(
                 {
