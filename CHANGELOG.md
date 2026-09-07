@@ -27,7 +27,11 @@ Initial foundation of the modern, calendar-aware school bell system.
   resolution, settings, and sound preview.
 - APScheduler-based scheduler that plans precise ring jobs per day (no 1 Hz
   polling) and re-plans on config change and daily.
-- Safe self-updater design with atomic release swap and automatic rollback.
+- Safe self-updater design with atomic release swap and automatic rollback,
+  **wired end-to-end**: Instellingen has a "Zoek naar updates" / "Installeer"
+  flow backed by `GET /api/update/check` and `POST /api/update/apply`. Apply is
+  launched detached (survives the service restart), validates the version tag,
+  and fails gracefully off-device. Publishing guide in `docs/updates.md`.
 - **Self-healing**: `Type=notify` systemd unit with a real watchdog (the app pets
   it from a health-monitor thread via `sd_notify`), `Restart=always`, and
   boot-time auto-start so the device recovers unattended after a power cut.

@@ -55,9 +55,68 @@
 </section>
 
 <section class="card">
+  <h2>Software-update</h2>
+  <p class="sub">Huidige versie: <strong>{{ version }}</strong>. Zoek naar een nieuwe
+    versie in de repository en installeer die. Een update wordt veilig toegepast en
+    draait automatisch terug als er iets misloopt.</p>
+  <div class="form-actions">
+    <button class="btn" type="button" id="btn-check" onclick="checkUpdate()">Zoek naar updates</button>
+  </div>
+  <div id="update-result" class="stack" style="margin-top:.8rem"></div>
+</section>
+
+<section class="card">
   <h2>Systeem</h2>
   <p class="muted">Tijdzone: <strong>{{ timezone }}</strong> · Versie: <strong>{{ version }}</strong></p>
   <p class="hint">De tijdzone wordt bij installatie ingesteld. Neem contact op met de
     beheerder om deze te wijzigen.</p>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function checkUpdate() {
+  const box = document.getElementById('update-result');
+  const btn = document.getElementById('btn-check');
+  btn.disabled = true;
+  box.innerHTML = '<p class="muted">Bezig met zoeken…</p>';
+  try {
+    const resp = await fetch('/api/update/check');
+    const d = await resp.json();
+    if (d.error) {
+      box.innerHTML = '<div class="banner warn">' + d.error + '</div>';
+    } else if (d.available) {
+      box.innerHTML =
+        '<div class="banner ok">Nieuwe versie beschikbaar: <strong>' + d.latest +
+        '</strong> (huidig: ' + d.current + ').</div>' +
+        '<button class="btn btn-primary" type="button" onclick="applyUpdate(\'' + d.latest +
+        '\')">Installeer ' + d.latest + '</button>' +
+        (d.url ? ' <a class="btn" href="' + d.url + '" target="_blank" rel="noopener">Release-notities</a>' : '');
+    } else {
+      box.innerHTML = '<div class="banner ok">Je hebt de nieuwste versie (' + d.current + ').</div>';
+    }
+  } catch (e) {
+    box.innerHTML = '<div class="banner err">Netwerkfout: ' + e + '</div>';
+  }
+  btn.disabled = false;
+}
+
+async function applyUpdate(tag) {
+  if (!confirm('Versie ' + tag + ' installeren? Het toestel herstart hierbij kort.')) return;
+  const box = document.getElementById('update-result');
+  const body = new FormData(); body.append('tag', tag);
+  try {
+    const resp = await fetch('/api/update/apply', { method: 'POST', body });
+    const d = await resp.json();
+    if (resp.ok) {
+      box.innerHTML = '<div class="banner ok">' + d.detail +
+        ' Vernieuw deze pagina over ±1 minuut.</div>';
+    } else {
+      box.innerHTML = '<div class="banner err">' + (d.detail || 'Installatie mislukt') + '</div>';
+    }
+  } catch (e) {
+    box.innerHTML = '<div class="banner err">Netwerkfout: ' + e + '</div>';
+  }
+}
+</script>
 {% endblock %}

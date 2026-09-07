@@ -15,12 +15,20 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import shutil
+import subprocess
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 
 from . import __version__
 
 log = logging.getLogger(__name__)
+
+# Release tags we accept, e.g. "v0.2.0" or "0.2.0". Anything else is rejected
+# before it can reach the shell command (defence in depth; the call is argv-based).
+_TAG_RE = re.compile(r"^v?\d+(\.\d+){0,3}$")
 
 
 @dataclass(frozen=True)
@@ -74,3 +82,35 @@ def is_newer(latest_tag: str, current: str | None = None) -> bool:
     if a is None or b is None:
         return False
     return a > b
+
+
+def is_valid_tag(tag: str) -> bool:
+    return bool(_TAG_RE.match(tag.strip()))
+
+
+def launch_update(tag: str, script: Path) -> tuple[bool, str]:
+    """Kick off the privileged updater for *tag* and return immediately.
+
+    The apply script restarts the service (which kills this process), so it is
+    launched **detached** in its own session; the web response returns before the
+    restart happens. Returns ``(started, message)``. On a development machine —
+    where the script or ``sudo`` is absent — it fails gracefully rather than
+    raising, so the UI can show a clear message.
+    """
+    tag = tag.strip()
+    if not is_valid_tag(tag):
+        return False, f"Ongeldige versietag: {tag!r}"
+    if shutil.which("sudo") is None:
+        return False, "sudo niet beschikbaar (alleen op het geïnstalleerde toestel)."
+    if not script.exists():
+        return False, f"Updatescript niet gevonden op {script} (alleen op het toestel)."
+    try:
+        subprocess.Popen(  # noqa: S603 - argv list, tag validated above
+            ["sudo", str(script), tag],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as exc:
+        return False, f"Kon update niet starten: {exc}"
+    return True, f"Update naar {tag} gestart. Het toestel herstart zo meteen."

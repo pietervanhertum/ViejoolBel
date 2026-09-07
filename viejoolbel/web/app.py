@@ -18,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import __version__, auth
+from .. import __version__, auth, updater
 from ..bell import BellController
 from ..config import Settings
 from ..db import get_setting, session_scope, set_setting
@@ -817,6 +817,37 @@ def create_app(
         with session_scope() as s:
             set_setting(s, "volume_db", str(volume_db))
         return JSONResponse({"ok": True})
+
+    # --- software update -------------------------------------------------
+    @app.get("/api/update/check")
+    def update_check(_: LoggedIn) -> JSONResponse:
+        current = updater.current_version()
+        info = updater.check_latest(settings.update_repo)
+        if info is None:
+            return JSONResponse(
+                {
+                    "available": False,
+                    "current": current,
+                    "latest": None,
+                    "error": "Kon de updateserver niet bereiken (geen internet of geen release).",
+                }
+            )
+        return JSONResponse(
+            {
+                "available": updater.is_newer(info.tag),
+                "current": current,
+                "latest": info.tag,
+                "notes": info.notes,
+                "url": info.url,
+            }
+        )
+
+    @app.post("/api/update/apply")
+    def update_apply(_: LoggedIn, tag: Annotated[str, Form()]) -> JSONResponse:
+        if not updater.is_valid_tag(tag):
+            raise HTTPException(400, f"Ongeldige versietag: {tag!r}")
+        started, message = updater.launch_update(tag, settings.update_script)
+        return JSONResponse({"ok": started, "detail": message}, status_code=202 if started else 409)
 
     # --- backup / restore -----------------------------------------------
     @app.get("/api/backup")

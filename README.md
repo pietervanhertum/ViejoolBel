@@ -51,6 +51,7 @@ a clean, tested, from-scratch implementation on a modern stack.
 | [`docs/installation.md`](docs/installation.md) | Flashing & installing on the Pi |
 | [`docs/onboarding.md`](docs/onboarding.md) | Headless first-boot WiFi setup |
 | [`docs/remote-support.md`](docs/remote-support.md) | Tailscale remote access |
+| [`docs/updates.md`](docs/updates.md) | How to publish a release and update the device |
 | [`docs/PRINT-installatie.md`](docs/PRINT-installatie.md) | **Printable** Dutch install guide (for the installer) |
 | [`docs/PRINT-handleiding.md`](docs/PRINT-handleiding.md) | **Printable** Dutch user guide (for school staff) |
 

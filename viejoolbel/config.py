@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     update_repo: str = "https://github.com/pietervanhertum/ViejoolBel"
     # Where releases are checked out; the "current" symlink points at the active one.
     releases_dir: Path = Field(default=Path("/opt/viejoolbel/releases"))
+    # Privileged helper that performs the atomic swap + rollback (see updater.py).
+    update_script: Path = Field(default=Path("/opt/viejoolbel/current/deploy/apply_update.sh"))
 
     # --- Health monitoring & alerting ---
     # How often the monitor evaluates health and pings the systemd watchdog (s).
