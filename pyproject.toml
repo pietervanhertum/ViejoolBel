@@ -46,6 +46,7 @@ include = ["viejoolbel*"]
 
 [tool.setuptools.package-data]
 "viejoolbel.web" = ["templates/*.html", "static/*"]
+"viejoolbel" = ["assets/sounds/*.wav"]
 
 [tool.ruff]
 line-length = 100

@@ -15,6 +15,10 @@ Initial foundation of the modern, calendar-aware school bell system.
   driver so the whole app runs and is tested off-device.
 - Single, lock-guarded ring path with an audit log; scheduled/manual/button/test
   rings can never overlap.
+- **Default collection of bell sounds** (Enkele bel, Dubbele bel, Schoolbel,
+  Gong) — original synthesized WAVs bundled in the package and installed on first
+  run, so the bell works out of the box with no uploads. Regenerate with
+  `scripts/generate_default_sounds.py`.
 - FastAPI web interface + JSON API: login, dashboard, ring-now, self-test,
   silence-today, sound upload, day-type/event and calendar CRUD, backup, password
   change.
