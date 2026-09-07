@@ -1,23 +1,31 @@
 // Progressive-enhancement helpers. The UI works as plain HTML forms; these make
 // it feel snappier by submitting via fetch and reloading, with clear errors.
 
-async function postForm(form) {
+// IMPORTANT: this MUST stay a *synchronous* function that returns false.
+// Used as `onsubmit="return postForm(this)"`; an inline onsubmit only cancels the
+// native form submission when the handler returns literally false. An async
+// function would return a (truthy) Promise, so the browser would ALSO submit the
+// form natively and navigate to the API URL. The real work runs in _submitForm().
+function postForm(form) {
+  _submitForm(form);
+  return false;
+}
+
+async function _submitForm(form) {
   const btn = form.querySelector('button[type=submit]');
   if (btn) btn.disabled = true;
   try {
     const resp = await fetch(form.action, { method: form.method || 'POST', body: new FormData(form) });
     if (!resp.ok) {
-      const msg = await extractError(resp);
-      alert('Mislukt: ' + msg);
+      alert('Mislukt: ' + (await extractError(resp)));
       if (btn) btn.disabled = false;
-      return false;
+      return;
     }
     location.reload();
   } catch (e) {
     alert('Netwerkfout: ' + e);
     if (btn) btn.disabled = false;
   }
-  return false;
 }
 
 async function apiDelete(url, confirmMsg) {
