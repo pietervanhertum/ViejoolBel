@@ -1,0 +1,94 @@
+{% extends "layout.html" %}
+{% block title %}Kalender — de Viejool{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Kalender</h1></div>
+
+<section class="card">
+  <div class="cal-head">
+    <a class="btn btn-sm" href="/kalender?year={{ prev_y }}&month={{ prev_m }}">← Vorige</a>
+    <h2>{{ month_name }} {{ year }}</h2>
+    <a class="btn btn-sm" href="/kalender?year={{ next_y }}&month={{ next_m }}">Volgende →</a>
+  </div>
+
+  <div class="cal-grid">
+    {% for d in ['Ma','Di','Wo','Do','Vr','Za','Zo'] %}<div class="cal-dow">{{ d }}</div>{% endfor %}
+    {% for _ in range(first_weekday) %}<div class="cal-cell empty"></div>{% endfor %}
+    {% for c in cells %}
+    <div class="cal-cell {{ 'closed' if c.closed else 'open' }} {{ 'today' if c.is_today }}"
+         title="{{ c.reason }}">
+      <span class="cal-day">{{ c.day }}</span>
+      {% if c.closed %}
+        <span class="cal-tag closed">gesloten</span>
+      {% else %}
+        <span class="cal-tag open">{{ c.day_type_name }}</span>
+        <span class="cal-count">{{ c.ring_count }} bel{{ '' if c.ring_count == 1 else 'len' }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="hint" style="margin-top:.8rem">
+    <span class="badge badge-default">groen</span> = schooldag ·
+    <span class="badge badge-muted">beige</span> = gesloten. De weekindeling stel je in
+    bij <a href="/roosters">Roosters</a>; hieronder voeg je uitzonderingen toe.
+  </p>
+</section>
+
+<section class="card">
+  <h2>Uitzonderingen & vakanties</h2>
+  <p class="sub">Overschrijf losse dagen of periodes: markeer ze als gesloten
+    (vakantie, vrije dag) of wijs er een ander dagtype aan toe (bv. examenrooster).</p>
+
+  {% if rules %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Van</th><th>Tot</th><th>Wat</th><th>Notitie</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rules %}
+      <tr>
+        <td>{{ r.start_date }}</td>
+        <td>{{ r.end_date }}</td>
+        <td>
+          {% if r.kind == 'closed' %}<span class="badge badge-muted">gesloten</span>
+          {% else %}<span class="badge badge-default">{{ r.day_type_name or '?' }}</span>{% endif %}
+        </td>
+        <td>{{ r.note }}</td>
+        <td class="row-actions">
+          <button class="btn btn-sm btn-danger"
+            onclick="apiDelete('/api/calendar/{{ r.id }}', 'Deze regel verwijderen?')">Verwijderen</button>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="empty-state">Nog geen uitzonderingen.</p>{% endif %}
+
+  <form method="post" action="/api/calendar" class="field-row" onsubmit="return postForm(this)"
+        style="margin-top:1rem">
+    <div><label>Van</label><input type="date" name="start_date" required></div>
+    <div><label>Tot en met</label><input type="date" name="end_date" required></div>
+    <div>
+      <label>Wat</label>
+      <select name="__combo" onchange="applyRule(this)">
+        <option value="closed:">Gesloten (geen bel)</option>
+        {% for d in day_types %}<option value="day_type:{{ d.id }}">Dagtype: {{ d.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div><label>Notitie</label><input name="note" placeholder="bv. Herfstvakantie"></div>
+    <input type="hidden" name="kind" value="closed">
+    <input type="hidden" name="day_type_id" value="">
+    <button class="btn btn-primary" type="submit">Toevoegen</button>
+  </form>
+  <p class="hint">Tip: één dag? Zet “Van” en “Tot en met” op dezelfde datum.</p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function applyRule(sel) {
+  const [kind, id] = sel.value.split(':');
+  const form = sel.closest('form');
+  form.querySelector('input[name=kind]').value = kind;
+  form.querySelector('input[name=day_type_id]').value = id || '';
+}
+</script>
+{% endblock %}

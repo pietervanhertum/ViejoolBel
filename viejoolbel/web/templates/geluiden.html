@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+{% block title %}Geluiden — de Viejool{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Geluiden</h1></div>
+
+<section class="card">
+  <h2>Belgeluiden</h2>
+  <p class="sub">Upload de geluiden die je bij belmomenten wilt gebruiken
+    (mp3, wav of ogg). Beluister ze met ▶ en verwijder wat je niet meer nodig hebt.</p>
+
+  {% if sounds %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Naam</th><th>Type</th><th>In gebruik</th><th></th></tr></thead>
+    <tbody>
+    {% for snd in sounds %}
+      <tr>
+        <td><strong>{{ snd.name }}</strong></td>
+        <td>{% if snd.is_alarm %}<span class="badge badge-alarm">alarm</span>
+            {% else %}<span class="badge badge-audio">bel</span>{% endif %}</td>
+        <td>{{ 'ja' if snd.in_use else '—' }}</td>
+        <td class="row-actions">
+          <button class="btn btn-sm" onclick="playSound({{ snd.id }})">▶ Beluister</button>
+          <button class="btn btn-sm btn-danger" {{ 'disabled title=In-gebruik' if snd.in_use }}
+            onclick="apiDelete('/api/sounds/{{ snd.id }}', 'Geluid “{{ snd.name }}” verwijderen?')">Verwijderen</button>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="empty-state">Nog geen geluiden geüpload.</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Geluid uploaden</h2>
+  <form method="post" action="/api/sounds" enctype="multipart/form-data" class="field-row"
+        onsubmit="return postForm(this)">
+    <div><label>Naam</label><input name="name" placeholder="bv. Startbel" required></div>
+    <div><label>Bestand</label><input type="file" name="file" accept=".mp3,.wav,.ogg" required></div>
+    <div style="flex:0 0 auto">
+      <label>Type</label>
+      <label class="check"><input type="checkbox" name="is_alarm"> evacuatie/alarm</label>
+    </div>
+    <button class="btn btn-primary" type="submit">Uploaden</button>
+  </form>
+</section>
+{% endblock %}

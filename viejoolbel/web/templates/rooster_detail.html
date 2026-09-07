@@ -1,0 +1,89 @@
+{% extends "layout.html" %}
+{% block title %}{{ day_type.name }} — Roosters — de Viejool{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <a class="crumb" href="/roosters">← Roosters</a>
+    <h1>{{ day_type.name }}
+      {% if day_type.is_default %}<span class="badge badge-default">standaard</span>{% endif %}
+    </h1>
+  </div>
+</div>
+
+<section class="card">
+  <h2>Naam wijzigen</h2>
+  <form method="post" action="/api/day-types/{{ day_type.id }}/rename" class="field-row"
+        onsubmit="return postForm(this)">
+    <div><input name="name" value="{{ day_type.name }}" required></div>
+    <button class="btn" type="submit">Opslaan</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Beltijden</h2>
+  <p class="sub">De belmomenten voor dit dagtype. Kies per moment een geluid, of
+    laat het op “alleen relais” staan voor de elektrische bel.</p>
+
+  {% if events %}
+  <div class="stack">
+    {% for e in events %}
+    <form method="post" action="/api/events/{{ e.id }}" class="field-row event-row"
+          onsubmit="return postForm(this)">
+      <div style="max-width:120px"><label>Tijd</label>
+        <input type="time" name="at" value="{{ e.at }}" required></div>
+      <div><label>Label</label><input name="label" value="{{ e.label }}" placeholder="bv. Pauze"></div>
+      <div><label>Geluid</label>
+        <select name="sound_id">
+          <option value="">(alleen relais)</option>
+          {% for snd in sounds %}
+          <option value="{{ snd.id }}" {{ 'selected' if snd.id == e.sound_id }}>{{ snd.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="max-width:90px"><label>Duur (s)</label>
+        <input type="number" name="duration" value="{{ e.duration }}" min="1" max="120"></div>
+      <div style="flex:0 0 auto">
+        <label>Uitvoer</label>
+        <div class="checks">
+          <label class="check"><input type="checkbox" name="use_audio" {{ 'checked' if e.use_audio }}> audio</label>
+          <label class="check"><input type="checkbox" name="use_relay" {{ 'checked' if e.use_relay }}> relais</label>
+        </div>
+      </div>
+      <div style="flex:0 0 auto" class="row-actions">
+        <button class="btn btn-sm" type="submit">Opslaan</button>
+        <button class="btn btn-sm btn-danger" type="button"
+          onclick="apiDelete('/api/events/{{ e.id }}', 'Belmoment {{ e.at }} verwijderen?')">✕</button>
+      </div>
+    </form>
+    {% endfor %}
+  </div>
+  {% else %}<p class="empty-state">Nog geen beltijden voor dit dagtype.</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Belmoment toevoegen</h2>
+  <form method="post" action="/api/day-types/{{ day_type.id }}/events" class="field-row"
+        onsubmit="return postForm(this)">
+    <div style="max-width:130px"><label>Tijd</label><input type="time" name="at" required></div>
+    <div><label>Label</label><input name="label" placeholder="bv. Start school"></div>
+    <div>
+      <label>Geluid</label>
+      <select name="sound_id">
+        <option value="">(alleen relais)</option>
+        {% for snd in sounds %}<option value="{{ snd.id }}">{{ snd.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div style="max-width:100px"><label>Duur (s)</label><input type="number" name="duration" value="8" min="1" max="120"></div>
+    <div class="checks">
+      <label class="check"><input type="checkbox" name="use_audio" checked> audio</label>
+      <label class="check"><input type="checkbox" name="use_relay" checked> relais</label>
+    </div>
+    <button class="btn btn-primary" type="submit">Toevoegen</button>
+  </form>
+  {% if not sounds %}
+  <p class="hint">Tip: je hebt nog geen geluiden geüpload. Voeg ze toe bij
+    <a href="/geluiden">Geluiden</a> (of laat “alleen relais” aan staan).</p>
+  {% endif %}
+</section>
+{% endblock %}

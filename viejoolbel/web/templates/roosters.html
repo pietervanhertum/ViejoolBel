@@ -1,0 +1,96 @@
+{% extends "layout.html" %}
+{% block title %}Roosters — de Viejool{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Roosters</h1>
+</div>
+
+<section class="card">
+  <h2>Dagtypes</h2>
+  <p class="sub">Een dagtype is een set beltijden, bv. “Gewone dag”, “Woensdag” of
+    “Examen”. Klik op een dagtype om de beltijden te bewerken.</p>
+  {% if day_types %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Naam</th><th>Beltijden</th><th></th><th></th></tr></thead>
+    <tbody>
+    {% for d in day_types %}
+      <tr>
+        <td>
+          <a class="list-link" href="/roosters/{{ d.id }}">{{ d.name }}</a>
+          {% if d.is_default %}<span class="badge badge-default">standaard</span>{% endif %}
+        </td>
+        <td>{{ d.count }}</td>
+        <td>
+          {% if not d.is_default %}
+          <button class="btn btn-sm" onclick="apiPost('/api/day-types/{{ d.id }}/default')">Maak standaard</button>
+          {% endif %}
+        </td>
+        <td class="row-actions">
+          <a class="btn btn-sm" href="/roosters/{{ d.id }}">Bewerken</a>
+          {% if not d.is_default %}
+          <button class="btn btn-sm btn-danger"
+            onclick="apiDelete('/api/day-types/{{ d.id }}', 'Dagtype “{{ d.name }}” verwijderen?')">Verwijderen</button>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="empty-state">Nog geen dagtypes.</p>{% endif %}
+
+  <form method="post" action="/api/day-types" class="field-row" onsubmit="return postForm(this)"
+        style="margin-top:1rem">
+    <div><label>Nieuw dagtype</label><input name="name" placeholder="bv. Woensdag" required></div>
+    <button class="btn btn-primary" type="submit">Toevoegen</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Weekindeling</h2>
+  <p class="sub">Welk dagtype geldt standaard op elke weekdag? Kies “Gesloten” voor
+    dagen zonder bel (bv. het weekend). Losse uitzonderingen en vakanties regel je
+    in de <a href="/kalender">Kalender</a>.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dag</th><th>Instelling</th></tr></thead>
+    <tbody>
+    {% for wd in weekdays %}
+      <tr>
+        <td><strong>{{ wd.name }}</strong></td>
+        <td>
+          <form method="post" action="/api/weekday-defaults" class="field-row"
+                onsubmit="return postForm(this)" style="align-items:center">
+            <input type="hidden" name="weekday" value="{{ wd.index }}">
+            <div style="max-width:260px">
+              <select name="__combo" onchange="applyWeekday(this)">
+                <option value="closed:" {{ 'selected' if wd.closed }}>Gesloten (geen bel)</option>
+                {% for d in day_types %}
+                <option value="day_type:{{ d.id }}"
+                  {{ 'selected' if (not wd.closed and wd.day_type_id == d.id) }}>{{ d.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <input type="hidden" name="kind" value="{{ 'closed' if wd.closed else 'day_type' }}">
+            <input type="hidden" name="day_type_id" value="{{ wd.day_type_id or '' }}">
+            <button class="btn btn-sm" type="submit">Opslaan</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Split the combined "kind:day_type_id" select into the two hidden fields.
+function applyWeekday(sel) {
+  const [kind, id] = sel.value.split(':');
+  const form = sel.closest('form');
+  form.querySelector('input[name=kind]').value = kind;
+  form.querySelector('input[name=day_type_id]').value = id || '';
+}
+</script>
+{% endblock %}

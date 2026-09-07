@@ -1,0 +1,63 @@
+{% extends "layout.html" %}
+{% block title %}Instellingen — de Viejool{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Instellingen</h1></div>
+
+{% if default_pw %}
+<div class="banner warn">⚠️ Je gebruikt nog het standaardwachtwoord. Stel hieronder een eigen wachtwoord in.</div>
+{% endif %}
+
+<section class="card">
+  <h2>Wachtwoord</h2>
+  <form method="post" action="/api/password" class="field-row" onsubmit="return postForm(this)">
+    <div><label>Nieuw wachtwoord</label>
+      <input type="password" name="new_password" minlength="6" placeholder="minstens 6 tekens" required></div>
+    <button class="btn btn-primary" type="submit">Opslaan</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Geluidsvolume</h2>
+  <p class="sub">Versterking van het belgeluid (in dB). 0 = standaard, negatief = stiller.</p>
+  <form method="post" action="/api/settings" class="field-row" onsubmit="return postForm(this)">
+    <div style="max-width:160px"><label>Volume (dB)</label>
+      <input type="number" name="volume_db" value="{{ volume_db }}" min="-40" max="20"></div>
+    <button class="btn" type="submit">Opslaan</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Meldingen bij problemen</h2>
+  <p class="sub">Een webhook (bv. ntfy.sh, Discord, Slack) krijgt een bericht zodra
+    er iets misgaat. De heartbeat-URL (bv. healthchecks.io) waarschuwt je als het
+    toestel helemaal offline of uit gaat.</p>
+  <form method="post" action="/api/notify-settings" class="stack" onsubmit="return postForm(this)">
+    <div>
+      <label>Webhook-URL (alerts)</label>
+      <input name="notify_webhook_url" value="{{ webhook_url }}" placeholder="https://ntfy.sh/mijn-school-bel">
+    </div>
+    <div>
+      <label>Heartbeat-URL (dead man's switch)</label>
+      <input name="heartbeat_url" value="{{ heartbeat_url }}" placeholder="https://hc-ping.com/xxxxxxxx">
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Opslaan</button>
+      <button class="btn" type="button" onclick="apiPost('/api/notify-test')">Stuur testmelding</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Back-up</h2>
+  <p class="sub">Download een kopie van je roosterconfiguratie.</p>
+  <a class="btn" href="/api/backup" download="viejoolbel-backup.json">Back-up downloaden</a>
+</section>
+
+<section class="card">
+  <h2>Systeem</h2>
+  <p class="muted">Tijdzone: <strong>{{ timezone }}</strong> · Versie: <strong>{{ version }}</strong></p>
+  <p class="hint">De tijdzone wordt bij installatie ingesteld. Neem contact op met de
+    beheerder om deze te wijzigen.</p>
+</section>
+{% endblock %}

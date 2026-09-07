@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Schoolbel — de Viejool{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="appbar">
+    <div class="appbar-inner">
+      <a class="brand" href="/">
+        <span class="brand-mark">🔔</span>
+        <span class="brand-text">
+          <strong>de Viejool</strong>
+          <small>Schoolbel · Eksel</small>
+        </span>
+      </a>
+      {% if request.session.get('user') %}
+      <nav class="mainnav">
+        <a href="/" class="{{ 'is-active' if active == 'overzicht' }}">Overzicht</a>
+        <a href="/roosters" class="{{ 'is-active' if active == 'roosters' }}">Roosters</a>
+        <a href="/kalender" class="{{ 'is-active' if active == 'kalender' }}">Kalender</a>
+        <a href="/geluiden" class="{{ 'is-active' if active == 'geluiden' }}">Geluiden</a>
+        <a href="/instellingen" class="{{ 'is-active' if active == 'instellingen' }}">Instellingen</a>
+      </nav>
+      <form method="post" action="/logout" class="logout">
+        <button class="btn btn-ghost btn-sm" type="submit">Uitloggen</button>
+      </form>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="foot">
+    <small>ViejoolBel {{ version }} · Basisschool de Viejool, Eksel</small>
+  </footer>
+  <script src="/static/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

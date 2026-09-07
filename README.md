@@ -19,8 +19,11 @@ a clean, tested, from-scratch implementation on a modern stack.
 - 🎵 **Audio *and* relay output** — play sound files through a speaker/amplifier,
   drive a physical electric bell through a GPIO relay, or both. Different sounds
   per moment (start of day, break, end, evacuation alarm).
-- 📱 **Web interface over WiFi** — set sounds and timings, ring the bell now,
-  "silence today", see history. Password protected, served over HTTPS.
+- 📱 **Web interface over WiFi** — a full, branded management UI (for *Basisschool
+  de Viejool*, Eksel): edit schedules and bell times, manage day-types and the
+  weekly layout, a month calendar for holidays/exceptions, upload sounds, ring the
+  bell now, "silence today", and see history. Password protected, served over
+  HTTPS. See [`docs/screenshots/`](docs/screenshots).
 - 📡 **Headless onboarding** — with no known WiFi the Pi opens its own access
   point + captive portal so you can configure WiFi with no internet. Reachable at
   `viejoolbel.local` via mDNS.

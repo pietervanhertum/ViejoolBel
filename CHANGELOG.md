@@ -18,6 +18,13 @@ Initial foundation of the modern, calendar-aware school bell system.
 - FastAPI web interface + JSON API: login, dashboard, ring-now, self-test,
   silence-today, sound upload, day-type/event and calendar CRUD, backup, password
   change.
+- **Full branded management UI** (Basisschool de Viejool, Eksel): a consistent
+  design system with pages for Overzicht, Roosters (day-types + weekly layout,
+  inline bell-time editing), Kalender (month view with holidays/exceptions),
+  Geluiden (upload/preview/delete), and Instellingen (password, volume,
+  notifications, backup). Backed by new endpoints for renaming/deleting/defaulting
+  day-types, editing events, weekday defaults, calendar listing/deletion/month
+  resolution, settings, and sound preview.
 - APScheduler-based scheduler that plans precise ring jobs per day (no 1 Hz
   polling) and re-plans on config change and daily.
 - Safe self-updater design with atomic release swap and automatic rollback.
