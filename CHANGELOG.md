@@ -3,9 +3,10 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.1.0] - unreleased
+## [0.1.1] - 2026-09-07
 
-Initial foundation of the modern, calendar-aware school bell system.
+Initial release of the modern, calendar-aware school bell system, with the
+first round of field fixes.
 
 ### Fixed
 - Form buttons (Bel nu, and every other AJAX form) no longer navigate to the raw
