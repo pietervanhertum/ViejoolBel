@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -15,8 +16,19 @@ from .models import (
     CalendarRuleKind,
     DayType,
     Setting,
+    Sound,
     WeekdayDefault,
 )
+
+# Bundled starter sounds installed on first run so the bell works out of the box.
+# (name, filename, default_duration_seconds, is_alarm)
+DEFAULT_SOUNDS: list[tuple[str, str, int, bool]] = [
+    ("Enkele bel", "enkele-bel.wav", 3, False),
+    ("Dubbele bel", "dubbele-bel.wav", 4, False),
+    ("Schoolbel", "schoolbel.wav", 4, False),
+    ("Gong", "gong.wav", 4, False),
+]
+_ASSETS_SOUNDS_DIR = Path(__file__).parent / "assets" / "sounds"
 
 _SESSION_FACTORY: sessionmaker[Session] | None = None
 
@@ -98,3 +110,23 @@ def seed_defaults(s: Session) -> None:
     # First-run admin credentials (bcrypt hash set lazily by auth on first use).
     if get_setting(s, "admin_username", "") == "":
         set_setting(s, "admin_username", "admin")
+
+
+def install_default_sounds(s: Session, sounds_dir: Path) -> int:
+    """Copy the bundled starter sounds into *sounds_dir* and register them, once.
+
+    No-op when any sound already exists, so it never overwrites the user's own
+    uploads. Returns the number of sounds installed.
+    """
+    if s.scalar(select(Sound).limit(1)) is not None:
+        return 0
+    sounds_dir.mkdir(parents=True, exist_ok=True)
+    installed = 0
+    for name, filename, duration, is_alarm in DEFAULT_SOUNDS:
+        src = _ASSETS_SOUNDS_DIR / filename
+        if not src.exists():
+            continue
+        shutil.copyfile(src, sounds_dir / filename)
+        s.add(Sound(name=name, filename=filename, default_duration=duration, is_alarm=is_alarm))
+        installed += 1
+    return installed
