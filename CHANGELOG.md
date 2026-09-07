@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 Initial foundation of the modern, calendar-aware school bell system.
 
+### Fixed
+- Form buttons (Bel nu, and every other AJAX form) no longer navigate to the raw
+  JSON API response. `postForm` was `async`, so `onsubmit="return postForm(this)"`
+  returned a truthy Promise and the browser also submitted the form natively (and
+  fired the request twice — the second hitting the ring lock and returning
+  `{"ok":false}`). `postForm` is now synchronous and returns `false`, cancelling
+  the native submit; the request runs in the background.
+
 ### Added
 - Calendar-aware scheduling: weekly timetable, multiple day-types, and a
   holiday/exception calendar with deterministic, unit-tested resolution.
