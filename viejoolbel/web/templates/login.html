@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+{% block title %}Inloggen — de Viejool{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Inloggen</h1>
+  <p class="sub">Schoolbel · Basisschool de Viejool, Eksel</p>
+  {% if error %}<div class="banner err">{{ error }}</div>{% endif %}
+  <form method="post" action="/login" class="stack">
+    <div>
+      <label for="u">Gebruikersnaam</label>
+      <input id="u" name="username" autocomplete="username" required autofocus>
+    </div>
+    <div>
+      <label for="p">Wachtwoord</label>
+      <input id="p" name="password" type="password" autocomplete="current-password" required>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary btn-lg">Inloggen</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

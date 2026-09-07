@@ -1,0 +1,102 @@
+{% extends "layout.html" %}
+{% block title %}Overzicht — de Viejool{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Overzicht</h1></div>
+
+{% if default_pw %}
+<div class="banner warn">
+  ⚠️ Je gebruikt nog het standaardwachtwoord. Stel een eigen wachtwoord in bij
+  <a href="/instellingen">Instellingen</a>.
+</div>
+{% endif %}
+
+{% if health %}
+  {% if health.level.value == 'ok' %}
+  <div class="banner ok">✅ Systeem gezond — alle controles OK.</div>
+  {% else %}
+  <div class="banner {{ 'err' if health.level.value == 'error' else 'warn' }}">
+    {{ '⛔' if health.level.value == 'error' else '⚠️' }} Er is iets mis:
+    <ul>
+      {% for c in health.problems %}<li><strong>{{ c.name }}</strong>: {{ c.detail }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+{% endif %}
+
+<section class="card">
+  <h2>Vandaag</h2>
+  <p class="bigclock">{{ now.strftime('%A %d/%m/%Y — %H:%M') }}</p>
+  {% if resolution.closed %}
+    <p class="status closed">Gesloten — {{ resolution.reason }} (geen automatische bellen)</p>
+  {% else %}
+    <p class="status open">Open — {{ resolution.reason }}</p>
+  {% endif %}
+  {% if silenced %}<p class="status closed">🔕 “Vandaag stil” staat aan.</p>{% endif %}
+  {% if next_ring %}<p>Volgende bel: <strong>{{ next_ring.strftime('%H:%M') }}</strong></p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Bel nu</h2>
+  <p class="sub">Laat de bel meteen afgaan — voor een test of een onverwacht moment.</p>
+  <form method="post" action="/api/ring-now" class="field-row" onsubmit="return postForm(this)">
+    <div>
+      <label>Geluid</label>
+      <select name="sound_id">
+        <option value="">(alleen relais)</option>
+        {% for snd in sounds %}<option value="{{ snd.id }}">{{ snd.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div style="max-width:110px">
+      <label>Duur (s)</label>
+      <input type="number" name="duration" value="8" min="1" max="120">
+    </div>
+    <div class="checks">
+      <label class="check"><input type="checkbox" name="use_audio" checked> audio</label>
+      <label class="check"><input type="checkbox" name="use_relay" checked> relais</label>
+    </div>
+    <button class="btn btn-primary" type="submit">🔔 Bel nu</button>
+  </form>
+  <div class="form-actions">
+    <form method="post" action="/api/self-test" class="inline" onsubmit="return postForm(this)">
+      <button type="submit" class="btn">Zelftest</button>
+    </form>
+    <form method="post" action="/api/silence-today" class="inline" onsubmit="return postForm(this)">
+      <input type="hidden" name="on" value="{{ 'false' if silenced else 'true' }}">
+      <button type="submit" class="btn">{{ 'Vandaag weer inschakelen' if silenced else 'Vandaag stil' }}</button>
+    </form>
+  </div>
+</section>
+
+<div class="grid cols-2">
+  <section class="card">
+    <h2>Rooster vandaag</h2>
+    {% if plan %}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Tijd</th><th>Label</th><th>Audio</th><th>Relais</th></tr></thead>
+      <tbody>
+      {% for p in plan %}
+        <tr><td><strong>{{ p.at.strftime('%H:%M') }}</strong></td><td>{{ p.label or '—' }}</td>
+            <td>{{ '✓' if p.use_audio else '' }}</td><td>{{ '✓' if p.use_relay else '' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="empty-state">Geen bellen gepland voor vandaag.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Recente bellen</h2>
+    {% if recent %}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Wanneer</th><th>Bron</th><th>Geluid</th><th>OK</th></tr></thead>
+      <tbody>
+      {% for r in recent %}
+        <tr><td>{{ r.ts.strftime('%d/%m %H:%M') }}</td><td>{{ r.source.value }}</td>
+            <td>{{ r.sound_name }}</td><td>{{ '✓' if r.ok else '✗' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="empty-state">Nog geen bellen geregistreerd.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

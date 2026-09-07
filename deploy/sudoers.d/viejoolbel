@@ -1,0 +1,6 @@
+# Tightly-scoped privileges for the unprivileged 'viejoolbel' service user.
+# Only these exact commands may be run as root from the web app (NFR-4).
+viejoolbel ALL=(root) NOPASSWD: /opt/viejoolbel/current/deploy/apply_update.sh *
+viejoolbel ALL=(root) NOPASSWD: /bin/systemctl restart viejoolbel.service
+viejoolbel ALL=(root) NOPASSWD: /sbin/reboot
+viejoolbel ALL=(root) NOPASSWD: /opt/viejoolbel/current/deploy/set_wifi.sh *

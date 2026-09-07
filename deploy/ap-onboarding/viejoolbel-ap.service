@@ -1,0 +1,12 @@
+[Unit]
+Description=ViejoolBel onboarding access point (starts only when no WiFi is joinable)
+After=network.target
+Before=viejoolbel.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/viejoolbel/current/deploy/ap-onboarding/viejoolbel-ap.sh 45
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
