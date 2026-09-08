@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 from pathlib import Path
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -440,17 +441,23 @@ def create_app(
         file: UploadFile,
         is_alarm: Annotated[bool, Form()] = False,
     ) -> JSONResponse:
+        name = name.strip()
+        if not name:
+            raise HTTPException(400, "Name is required")
         allowed = {".mp3", ".wav", ".ogg"}
         suffix = Path(file.filename or "").suffix.lower()
         if suffix not in allowed:
             raise HTTPException(400, f"Unsupported file type {suffix!r}")
-        settings.sounds_dir.mkdir(parents=True, exist_ok=True)
-        safe = f"{abs(hash(name)) % 10_000_000}{suffix}"
-        dest = settings.sounds_dir / safe
-        dest.write_bytes(await file.read())
+        # Reject a duplicate name BEFORE writing anything to disk, and use a
+        # collision-free unique filename (the old hash(name)%N could overwrite a
+        # different sound's file).
         with session_scope() as s:
             if s.scalar(select(Sound).where(Sound.name == name)):
                 raise HTTPException(409, "A sound with that name already exists")
+        settings.sounds_dir.mkdir(parents=True, exist_ok=True)
+        safe = f"{uuid4().hex}{suffix}"
+        (settings.sounds_dir / safe).write_bytes(await file.read())
+        with session_scope() as s:
             snd = Sound(name=name, filename=safe, is_alarm=is_alarm)
             s.add(snd)
             s.flush()

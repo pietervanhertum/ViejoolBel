@@ -11,6 +11,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   extracts the numbers from a tag, tolerating prefixes and stray separators
   (`v0.1.1`, `0.1.1`, `v.0.1.1`, `release-0.1.1` all compare correctly), and the
   apply endpoint accepts any argv-safe tag containing a digit.
+- **Un-ticking a checkbox (audio / relais) was ignored** everywhere. Unchecked
+  checkboxes are omitted from a browser form post, so the server's `True` default
+  won and audio/relay could never be turned off (Bel nu, and adding/editing bell
+  events). The client now sends every checkbox as an explicit `true`/`false`.
+- **The volume setting had no effect.** The audio player ignored `volume_db`; it
+  is now applied via an ffplay `volume` filter.
+- **Sound uploads could overwrite each other.** Filenames were derived from
+  `hash(name) % N` (collision-prone) and written before the duplicate-name check.
+  Uploads now use a unique filename and reject a duplicate name before writing.
 
 ### Added
 - **Private-repository support for updates.** `check_latest` sends a

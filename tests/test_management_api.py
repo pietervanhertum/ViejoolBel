@@ -11,6 +11,14 @@ def _default_dt(client: TestClient) -> int:
     return client.get("/api/day-types").json()[0]["id"]
 
 
+def _upload_sound(client: TestClient, name: str, blob: bytes = b"RIFFfake"):
+    return client.post(
+        "/api/sounds",
+        data={"name": name},
+        files={"file": ("s.wav", io.BytesIO(blob), "audio/wav")},
+    )
+
+
 def test_create_rename_and_delete_day_type(auth_client: TestClient):
     new_id = auth_client.post("/api/day-types", data={"name": "Woensdag"}).json()["id"]
     r = auth_client.post(f"/api/day-types/{new_id}/rename", data={"name": "Woe"})
@@ -117,3 +125,37 @@ def test_sound_audio_download(auth_client: TestClient):
     sid = auth_client.post("/api/sounds", data={"name": "Preview"}, files=files).json()["id"]
     resp = auth_client.get(f"/api/sounds/{sid}/audio")
     assert resp.status_code == 200 and resp.content == b"RIFFfake"
+
+
+def test_uploaded_sounds_get_distinct_filenames(auth_client: TestClient, service):
+    # Two different names must never share a file on disk (old hash%N could collide
+    # and overwrite one sound's audio with another's).
+    for name, blob in [("Bel A", b"AAAA"), ("Bel B", b"BBBB")]:
+        _upload_sound(auth_client, name, blob)
+    from sqlalchemy import select
+
+    from viejoolbel.db import session_scope
+    from viejoolbel.models import Sound
+
+    with session_scope() as s:
+        rows = {snd.name: snd.filename for snd in s.scalars(select(Sound))}
+    assert rows["Bel A"] != rows["Bel B"]
+    # And the bytes on disk are the ones uploaded (not overwritten).
+    assert (service.settings.sounds_dir / rows["Bel A"]).read_bytes() == b"AAAA"
+    assert (service.settings.sounds_dir / rows["Bel B"]).read_bytes() == b"BBBB"
+
+
+def test_duplicate_name_rejected_without_touching_existing_file(auth_client: TestClient, service):
+    _upload_sound(auth_client, "Uniek", b"ORIG")
+    from sqlalchemy import select
+
+    from viejoolbel.db import session_scope
+    from viejoolbel.models import Sound
+
+    with session_scope() as s:
+        fname = s.scalar(select(Sound).where(Sound.name == "Uniek")).filename
+    # A second upload with the same name is rejected...
+    resp = _upload_sound(auth_client, "Uniek", b"NEW")
+    assert resp.status_code == 409
+    # ...and the original file is untouched (no overwrite, no orphan swap).
+    assert (service.settings.sounds_dir / fname).read_bytes() == b"ORIG"
