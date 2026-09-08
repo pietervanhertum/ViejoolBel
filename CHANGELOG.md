@@ -26,6 +26,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `Bearer` token and `apply_update.sh` clones with it, read from
   `VIEJOOLBEL_GITHUB_TOKEN` in `/etc/viejoolbel/viejoolbel.env`, so both the
   update button and the CLI work on a private repo. See `docs/github-auth.md`.
+- **Configuration restore (import)** completes backup/restore (FR-18). The backup
+  is now a portable JSON document (day-types + events, weekly layout, calendar,
+  settings) that references sounds and day-types by name; restore replaces the
+  schedule configuration, keeps existing audio, matches sounds by name, and
+  reports any events whose sound is missing (they become relay-only).
 
 ## [0.1.1] - 2026-09-07
 

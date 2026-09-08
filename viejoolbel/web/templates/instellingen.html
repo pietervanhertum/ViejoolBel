@@ -28,10 +28,11 @@
 </section>
 
 <section class="card">
-  <h2>Meldingen bij problemen</h2>
-  <p class="sub">Een webhook (bv. ntfy.sh, Discord, Slack) krijgt een bericht zodra
-    er iets misgaat. De heartbeat-URL (bv. healthchecks.io) waarschuwt je als het
-    toestel helemaal offline of uit gaat.</p>
+  <h2>Meldingen bij problemen <span class="badge badge-muted">geavanceerd</span></h2>
+  <p class="sub">Optioneel, meestal door de beheerder ingesteld. Een webhook
+    (bv. ntfy.sh, Discord, Slack) krijgt een bericht zodra er iets misgaat. De
+    heartbeat-URL (bv. healthchecks.io) waarschuwt je als het toestel helemaal
+    offline of uit gaat. Laat leeg als je dit niet gebruikt.</p>
   <form method="post" action="/api/notify-settings" class="stack" onsubmit="return postForm(this)">
     <div>
       <label>Webhook-URL (alerts)</label>
@@ -49,9 +50,23 @@
 </section>
 
 <section class="card">
-  <h2>Back-up</h2>
-  <p class="sub">Download een kopie van je roosterconfiguratie.</p>
-  <a class="btn" href="/api/backup" download="viejoolbel-backup.json">Back-up downloaden</a>
+  <h2>Back-up &amp; herstel</h2>
+  <p class="sub">Download een kopie van je roosters en instellingen, of zet een
+    eerdere back-up terug. Je geluidsbestanden en wachtwoord zitten niet in de
+    back-up.</p>
+  <div class="form-actions">
+    <a class="btn" href="/api/backup" download="viejoolbel-backup.json">Back-up downloaden</a>
+  </div>
+  <form method="post" action="/api/restore" enctype="multipart/form-data"
+        class="field-row" style="margin-top:.6rem"
+        onsubmit="return confirmRestore(this)">
+    <div><label>Back-up terugzetten</label>
+      <input type="file" name="file" accept="application/json,.json" required></div>
+    <button class="btn btn-danger" type="submit">Herstellen</button>
+  </form>
+  <p class="hint">Let op: herstellen <strong>vervangt</strong> je huidige roosters,
+    weekindeling en kalender.</p>
+  <div id="restore-result" class="stack" style="margin-top:.6rem"></div>
 </section>
 
 <section class="card">
@@ -75,6 +90,31 @@
 
 {% block scripts %}
 <script>
+async function confirmRestore(form) {
+  if (!confirm('Weet je het zeker? Dit vervangt je huidige roosters, weekindeling en kalender.'))
+    return false;
+  const box = document.getElementById('restore-result');
+  box.innerHTML = '<p class="muted">Bezig met herstellen…</p>';
+  try {
+    const resp = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+    const d = await resp.json();
+    if (!resp.ok) {
+      box.innerHTML = '<div class="banner err">' + (d.detail || 'Herstellen mislukt') + '</div>';
+      return false;
+    }
+    let msg = 'Hersteld: ' + d.day_types + ' dagtypes, ' + d.events + ' beltijden, ' +
+      d.calendar_rules + ' kalenderregels.';
+    if (d.events_missing_sound > 0) {
+      msg += ' ' + d.events_missing_sound + ' beltijd(en) verwezen naar een ontbrekend geluid (' +
+        d.missing_sounds.join(', ') + ') en staan nu op alleen-relais.';
+    }
+    box.innerHTML = '<div class="banner ok">' + msg + '</div>';
+  } catch (e) {
+    box.innerHTML = '<div class="banner err">Netwerkfout: ' + e + '</div>';
+  }
+  return false;
+}
+
 async function checkUpdate() {
   const box = document.getElementById('update-result');
   const btn = document.getElementById('btn-check');

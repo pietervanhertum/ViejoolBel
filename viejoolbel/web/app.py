@@ -20,6 +20,7 @@ from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
 from .. import __version__, auth, updater
+from .. import backup as backup_mod
 from ..bell import BellController
 from ..config import Settings
 from ..db import get_setting, session_scope, set_setting
@@ -860,27 +861,27 @@ def create_app(
     @app.get("/api/backup")
     def backup(_: LoggedIn) -> JSONResponse:
         with session_scope() as s:
-            data = {
-                "version": __version__,
-                "day_types": [
-                    {
-                        "name": dt_.name,
-                        "is_default": dt_.is_default,
-                        "events": [
-                            {
-                                "at": e.at.strftime("%H:%M"),
-                                "duration": e.duration,
-                                "use_audio": e.use_audio,
-                                "use_relay": e.use_relay,
-                                "label": e.label,
-                            }
-                            for e in dt_.events
-                        ],
-                    }
-                    for dt_ in s.scalars(select(DayType))
-                ],
-            }
-        return JSONResponse(data)
+            data = backup_mod.export_config(s, timezone=settings.timezone)
+        return JSONResponse(
+            data,
+            headers={"Content-Disposition": 'attachment; filename="viejoolbel-backup.json"'},
+        )
+
+    @app.post("/api/restore")
+    async def restore(_: LoggedIn, file: UploadFile) -> JSONResponse:
+        import json as _json
+
+        try:
+            data = _json.loads(await file.read())
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise HTTPException(400, "Kon het bestand niet lezen (geen geldige JSON).") from exc
+        try:
+            with session_scope() as s:
+                report = backup_mod.import_config(s, data)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        scheduler.reload()
+        return JSONResponse(report.as_dict())
 
     return app
 
