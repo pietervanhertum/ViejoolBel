@@ -11,11 +11,32 @@ function postForm(form) {
   return false;
 }
 
+// Build the request body explicitly. A plain `new FormData(form)` OMITS unchecked
+// checkboxes, so the server (whose booleans default to true) would ignore a user
+// un-ticking "audio" or "relais". We therefore send every checkbox as an explicit
+// "true"/"false" so toggling off actually takes effect.
+function buildBody(form) {
+  const fd = new FormData();
+  for (const el of form.elements) {
+    if (!el.name || el.disabled) continue;
+    if (el.type === 'checkbox') {
+      fd.set(el.name, el.checked ? 'true' : 'false');
+    } else if (el.type === 'radio') {
+      if (el.checked) fd.set(el.name, el.value);
+    } else if (el.type === 'file') {
+      if (el.files.length) fd.set(el.name, el.files[0]);
+    } else if (el.type !== 'submit' && el.type !== 'button') {
+      fd.set(el.name, el.value);
+    }
+  }
+  return fd;
+}
+
 async function _submitForm(form) {
   const btn = form.querySelector('button[type=submit]');
   if (btn) btn.disabled = true;
   try {
-    const resp = await fetch(form.action, { method: form.method || 'POST', body: new FormData(form) });
+    const resp = await fetch(form.action, { method: form.method || 'POST', body: buildBody(form) });
     if (!resp.ok) {
       alert('Mislukt: ' + (await extractError(resp)));
       if (btn) btn.disabled = false;
