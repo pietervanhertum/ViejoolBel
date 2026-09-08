@@ -94,10 +94,10 @@ def migrate(s: Session) -> None:
 def seed_defaults(s: Session) -> None:
     """Create sensible defaults on a fresh database so the UI is usable at once."""
     if s.scalar(select(DayType).limit(1)) is None:
-        normal = DayType(name="Normal", is_default=True)
+        normal = DayType(name="Gewone dag", is_default=True)
         s.add(normal)
         s.flush()
-        # Monday–Friday default to the Normal day-type; weekends closed.
+        # Monday–Friday default to the "Gewone dag" day-type; weekends closed.
         for wd in range(7):
             kind = CalendarRuleKind.DAY_TYPE if wd < 5 else CalendarRuleKind.CLOSED
             s.add(

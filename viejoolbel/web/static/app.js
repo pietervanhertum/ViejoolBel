@@ -42,19 +42,42 @@ async function _submitForm(form) {
       if (btn) btn.disabled = false;
       return;
     }
-    location.reload();
+    reloadWithToast('Gelukt ✓');
   } catch (e) {
     alert('Netwerkfout: ' + e);
     if (btn) btn.disabled = false;
   }
 }
 
+// Show a brief confirmation after the page reloads, so a non-expert can see that
+// their action actually took effect.
+function reloadWithToast(msg) {
+  try { sessionStorage.setItem('vb_toast', msg); } catch (e) { /* ignore */ }
+  location.reload();
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = false;
+  el.classList.add('show');
+  setTimeout(() => { el.classList.remove('show'); }, 2200);
+  setTimeout(() => { el.hidden = true; }, 2600);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  let msg = null;
+  try { msg = sessionStorage.getItem('vb_toast'); sessionStorage.removeItem('vb_toast'); } catch (e) { /* ignore */ }
+  if (msg) showToast(msg);
+});
+
 async function apiDelete(url, confirmMsg) {
   if (confirmMsg && !confirm(confirmMsg)) return;
   try {
     const resp = await fetch(url, { method: 'DELETE' });
     if (!resp.ok) { alert('Mislukt: ' + (await extractError(resp))); return; }
-    location.reload();
+    reloadWithToast('Verwijderd ✓');
   } catch (e) { alert('Netwerkfout: ' + e); }
 }
 
@@ -64,7 +87,7 @@ async function apiPost(url, data) {
   try {
     const resp = await fetch(url, { method: 'POST', body });
     if (!resp.ok) { alert('Mislukt: ' + (await extractError(resp))); return; }
-    location.reload();
+    reloadWithToast('Gelukt ✓');
   } catch (e) { alert('Netwerkfout: ' + e); }
 }
 

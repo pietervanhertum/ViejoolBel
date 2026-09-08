@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.1.2] - 2026-09-07
 
+### Changed
+- **Usability polish for non-experts:** the default day-type is now named in Dutch
+  ("Gewone dag" instead of "Normal"); every save shows a brief confirmation toast;
+  "audio" / "relais" are explained inline (speaker vs. electric bell); and the
+  advanced notification settings are labelled as optional.
+
 ### Fixed
 - **Update check reported "up to date" for a valid newer release** when the
   release tag had unusual punctuation (e.g. `v.0.1.1`). Version parsing now
