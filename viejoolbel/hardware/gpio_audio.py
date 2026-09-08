@@ -10,10 +10,24 @@ from __future__ import annotations
 import logging
 import subprocess
 import time
+from pathlib import Path
 
 from .base import RingRequest, StatusState
 
 log = logging.getLogger(__name__)
+
+
+def build_play_cmd(sound_path: Path, duration: float, volume_db: int = 0) -> list[str]:
+    """Build the ffplay command, applying the configured volume (in dB) when set.
+
+    Kept as a pure function so the volume behaviour is unit-testable without audio
+    hardware. ffplay handles mp3/wav/ogg and honours a hard timeout via ``-t``.
+    """
+    cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", "-t", str(duration)]
+    if volume_db:
+        cmd += ["-af", f"volume={volume_db}dB"]
+    cmd.append(str(sound_path))
+    return cmd
 
 
 class GpioAudioHardware:
@@ -65,17 +79,7 @@ class GpioAudioHardware:
 
     def _play(self, request: RingRequest) -> None:
         assert request.sound_path is not None
-        # ffplay handles mp3/wav/ogg and honours a hard timeout via -t.
-        cmd = [
-            "ffplay",
-            "-nodisp",
-            "-autoexit",
-            "-loglevel",
-            "error",
-            "-t",
-            str(request.duration),
-            str(request.sound_path),
-        ]
+        cmd = build_play_cmd(request.sound_path, request.duration, request.volume_db)
         try:
             subprocess.run(cmd, check=True, timeout=request.duration + 5)
         except FileNotFoundError:
