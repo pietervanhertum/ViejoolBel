@@ -113,20 +113,28 @@ def seed_defaults(s: Session) -> None:
 
 
 def install_default_sounds(s: Session, sounds_dir: Path) -> int:
-    """Copy the bundled starter sounds into *sounds_dir* and register them, once.
+    """Install the bundled starter sounds **once**, adding only the ones missing.
 
-    No-op when any sound already exists, so it never overwrites the user's own
-    uploads. Returns the number of sounds installed.
+    Guarded by a one-time ``default_sounds_seeded`` flag so it runs a single time —
+    including on an upgrade of a database that predates this feature (that is why a
+    device installed at 0.1.0 had no default sounds). It adds each default only if
+    no sound with that name exists, so it never duplicates or overwrites the user's
+    own uploads, and after seeding it will not re-add sounds the user later deletes.
+    Returns the number of sounds installed.
     """
-    if s.scalar(select(Sound).limit(1)) is not None:
+    if get_setting(s, "default_sounds_seeded", "") == "1":
         return 0
+    existing = set(s.scalars(select(Sound.name)))
     sounds_dir.mkdir(parents=True, exist_ok=True)
     installed = 0
     for name, filename, duration, is_alarm in DEFAULT_SOUNDS:
+        if name in existing:
+            continue
         src = _ASSETS_SOUNDS_DIR / filename
         if not src.exists():
             continue
         shutil.copyfile(src, sounds_dir / filename)
         s.add(Sound(name=name, filename=filename, default_duration=duration, is_alarm=is_alarm))
         installed += 1
+    set_setting(s, "default_sounds_seeded", "1")
     return installed
