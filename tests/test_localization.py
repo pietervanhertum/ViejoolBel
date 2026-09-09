@@ -31,11 +31,16 @@ def test_dashboard_clock_is_dutch(auth_client: TestClient):
         assert english not in resp.text
 
 
-def test_schedule_time_input_is_not_the_locale_picker(auth_client: TestClient):
-    # The bell-time fields must not be a native <input type="time"> (whose picker
-    # shows AM/PM in English-locale browsers); they are forced-24h text fields.
+def test_schedule_time_values_are_24h(auth_client: TestClient):
+    # Bell times use the native <input type="time"> (accessible; its picker follows
+    # the *device's* language). Whatever the browser displays, the value the app
+    # emits and prefills is always 24-hour "HH:MM", which the API round-trips.
     dtid = auth_client.get("/api/day-types").json()[0]["id"]
+    auth_client.post(
+        f"/api/day-types/{dtid}/events",
+        data={"at": "14:00", "label": "Middag", "duration": "5"},
+    )
     resp = auth_client.get(f"/roosters/{dtid}")
     assert resp.status_code == 200
-    assert 'type="time"' not in resp.text
-    assert 'class="time24"' in resp.text
+    assert 'type="time"' in resp.text
+    assert 'value="14:00"' in resp.text  # 24-hour, never "2:00 PM"

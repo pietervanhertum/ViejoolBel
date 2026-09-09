@@ -34,3 +34,23 @@ def test_sudoers_still_scopes_the_updater():
     sudoers = (DEPLOY / "sudoers.d" / "viejoolbel").read_text()
     assert "apply_update.sh" in sudoers
     assert "NOPASSWD" in sudoers
+
+
+def test_unit_exposes_etc_paths_for_the_updater():
+    # apply_update.sh refreshes the unit + sudoers under /etc, which ProtectSystem
+    # makes read-only unless carved out with ReadWritePaths.
+    text = _unit_text()
+    assert "ProtectSystem=full" in text  # /etc stays protected by default
+    rw = next((ln for ln in text.splitlines() if ln.strip().startswith("ReadWritePaths=")), "")
+    assert "/etc/systemd/system" in rw and "/etc/sudoers.d" in rw
+
+
+def test_updater_refreshes_deployment_config():
+    # A changed unit/sudoers must reach devices through the normal update, not only
+    # via a manual install.sh re-run.
+    script = (DEPLOY / "apply_update.sh").read_text()
+    assert "install_deploy_config" in script
+    assert "/etc/systemd/system/viejoolbel.service" in script
+    assert "/etc/sudoers.d/viejoolbel" in script
+    # The sudoers file must be validated before it replaces the live one.
+    assert "visudo -cf" in script

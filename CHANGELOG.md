@@ -11,12 +11,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   sudo-based updater failed with *"the 'no new privileges' flag is set"* and the
   update did nothing. The flag is removed; privilege is still tightly scoped by
   the exact-command sudoers allowlist.
+- **The overview date/day is in Dutch.** It was rendered with `strftime('%A')`,
+  which uses the server's C locale and so always printed an English weekday
+  (e.g. "Wednesday") on every device. It now reads e.g.
+  *"woensdag 9 september 2026 — 17:30"* via explicit Dutch date helpers, with no
+  dependency on a system `nl_NL` locale being installed.
 
 ### Changed
-- **Dates and times are shown in Dutch, 24-hour, everywhere.** The overview
-  clock now reads e.g. *"woensdag 9 september 2026 — 17:30"* instead of an
-  English weekday. Bell-time entry uses forced 24-hour fields (`uu:mm`) rather
-  than the native time picker, which showed AM/PM in English-locale browsers.
+- **Updates now also refresh the systemd unit and sudoers rule.**
+  `apply_update.sh` re-installs `deploy/systemd/viejoolbel.service` and
+  `deploy/sudoers.d/viejoolbel` from the new release (with rollback), so
+  deployment-config fixes reach devices through the normal update, instead of
+  needing a manual `install.sh` re-run.
+
+### Notes
+- App-rendered times are 24-hour throughout. The bell-time editor keeps the
+  native time picker (`<input type="time">`); its 12h/24h *display* follows the
+  device's own language (a page cannot override it), while the value it stores is
+  always 24-hour `HH:MM`. Set the device/browser language to Dutch for a 24-hour
+  picker.
 
 ## [0.1.7] - 2026-09-09
 
