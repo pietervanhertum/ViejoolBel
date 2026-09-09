@@ -24,9 +24,10 @@ a clean, tested, from-scratch implementation on a modern stack.
   weekly layout, a month calendar for holidays/exceptions, upload sounds, ring the
   bell now, "silence today", and see history. Password protected, served over
   HTTPS. See [`docs/screenshots/`](docs/screenshots).
-- 📡 **Headless onboarding** — with no known WiFi the Pi opens its own access
-  point + captive portal so you can configure WiFi with no internet. Reachable at
-  `viejoolbel.local` via mDNS.
+- 📡 **Headless onboarding** — preseed the site's WiFi before you ship it and the
+  device joins on power-up with zero on-site setup; if it isn't known in advance,
+  the Pi opens its own access point + captive portal so someone on-site can enter
+  it with no internet. Reachable at `viejoolbel.local` via mDNS.
 - 🌐 **Remote support without network changes** — a [Tailscale](https://tailscale.com)
   mesh VPN lets you reach the device from anywhere, behind NAT/firewall, without
   port-forwarding or any change to the school's network.

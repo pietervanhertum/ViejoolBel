@@ -27,7 +27,8 @@ echo "==> Installing ViejoolBel ${VERSION} from ${SRC_DIR}"
 
 echo "==> Installing OS dependencies"
 apt-get update
-apt-get install -y python3 python3-venv python3-pip ffmpeg alsa-utils git avahi-daemon
+apt-get install -y python3 python3-venv python3-pip ffmpeg alsa-utils git avahi-daemon \
+  hostapd dnsmasq
 
 echo "==> Creating service user '${APP_USER}'"
 if ! id -u "${APP_USER}" >/dev/null 2>&1; then
@@ -68,6 +69,26 @@ install -m 440 "${SRC_DIR}/deploy/sudoers.d/viejoolbel" /etc/sudoers.d/viejoolbe
 
 echo "==> Installing systemd unit"
 install -m 644 "${SRC_DIR}/deploy/systemd/viejoolbel.service" /etc/systemd/system/viejoolbel.service
+
+echo "==> Enabling headless onboarding access point (offline WiFi fallback)"
+# Brings up the "ViejoolBel-Setup" portal at boot only when no known WiFi is
+# joined, so a device shipped without preseeded WiFi can still be onboarded
+# on-site with no internet (FR-19). Harmless when WiFi is preseeded: it sees the
+# link come up and exits without starting the AP.
+if command -v hostapd >/dev/null 2>&1 && command -v dnsmasq >/dev/null 2>&1; then
+  # The onboarding script starts its own hostapd/dnsmasq on demand, so mask the
+  # packaged system services — otherwise they run all the time and fight
+  # NetworkManager (and bind port 53) even when WiFi is fine.
+  systemctl disable --now hostapd.service dnsmasq.service >/dev/null 2>&1 || true
+  systemctl mask hostapd.service dnsmasq.service >/dev/null 2>&1 || true
+  install -m 644 "${SRC_DIR}/deploy/ap-onboarding/viejoolbel-ap.service" \
+    /etc/systemd/system/viejoolbel-ap.service
+  systemctl enable viejoolbel-ap.service
+else
+  echo "    (hostapd/dnsmasq not installed; skipping. Install them and re-run to"
+  echo "     enable the on-site setup portal — not needed if WiFi is preseeded.)"
+fi
+
 systemctl daemon-reload
 systemctl enable viejoolbel.service
 systemctl restart viejoolbel.service

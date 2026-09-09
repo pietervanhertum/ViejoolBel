@@ -49,8 +49,10 @@ referenced from code and tests.
 - **FR-18** Admin can **export/import** the full configuration (backup/restore).
 
 ### Connectivity & lifecycle
-- **FR-19** **Headless onboarding**: with no known WiFi the device exposes a WiFi
-  AP + captive portal to set WiFi credentials, with no internet required.
+- **FR-19** **Headless onboarding**: WiFi can be preseeded before deployment so the
+  device joins automatically on power-up with no on-site setup; if no WiFi is known,
+  the device exposes a WiFi AP + captive portal to set credentials on-site, with no
+  internet required.
 - **FR-20** The device is discoverable on the LAN as `viejoolbel.local` (mDNS).
 - **FR-21** **Remote support**: the admin can reach the UI and a shell from
   anywhere **without** changing the school's router/firewall (Tailscale).

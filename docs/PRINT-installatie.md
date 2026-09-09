@@ -34,6 +34,11 @@ Deze gids is voor wie het systeem installeert (technisch). De losse
      zónder internet worden ingesteld (zie stap 6).
 4. Schrijf de kaart en steek ze in de Pi. Sluit speaker/relais aan en start op.
 
+> 💡 **Ga je het toestel opsturen naar een school waar je zelf niet komt?**
+> Stel de schoolwifi dan **op voorhand** in (zie stap 6a). Dan verbindt het
+> toestel zich vanzelf zodra het daar wordt aangezet — de persoon ter plaatse
+> hoeft dan enkel de stekker in te steken.
+
 ## 3. Software installeren
 
 Verbind met de Pi (via SSH: `ssh pi@viejoolbel.local`) en voer uit:
@@ -62,9 +67,39 @@ draait ViejoolBel en start het **vanzelf opnieuw op na een stroomonderbreking**.
 - Log in met **`admin`** / **`changeme`**.
 - **Wijzig meteen het wachtwoord** (het dashboard blijft hiervoor waarschuwen).
 
-## 6. Zonder internet installeren (headless onboarding)
+## 6. Installeren zonder dat er al wifi is
 
-Als er nog geen wifi is: het toestel maakt zelf een wifi-netwerk aan.
+Er zijn twee manieren. Kies **6a** als je de schoolwifi al kent — dan hoeft er
+ter plaatse niemand iets in te stellen. **6b** is de terugval als de wifi niet
+op voorhand gekend is.
+
+### 6a. Wifi op voorhand instellen (aanbevolen — "gewoon inpluggen")
+
+Doe dit **thuis/op kantoor terwijl je het toestel klaarmaakt**, niet op school.
+Het netwerk hoeft niet in de buurt te zijn: het toestel onthoudt de gegevens en
+verbindt zodra dat netwerk in bereik komt. Voer op de Pi uit:
+
+```bash
+# De wifi van de school (hoger getal = voorkeur als er meerdere in bereik zijn):
+sudo /opt/viejoolbel/current/deploy/preseed_wifi.sh "SchoolWifi" "schoolwachtwoord" 10
+
+# Optioneel: je eigen werkbank-wifi, zodat je thuis nog kunt testen:
+sudo /opt/viejoolbel/current/deploy/preseed_wifi.sh "WerkbankAP" "testwachtwoord" 1
+```
+
+Je kunt dit meerdere keren uitvoeren voor meerdere netwerken; het toestel kiest
+zelf welk netwerk in bereik is. Stuur het toestel op → de school steekt enkel de
+stekker in → het verbindt vanzelf en is bereikbaar op `viejoolbel.local`. De
+instelpagina hieronder verschijnt dan niet.
+
+> Alternatief kun je in **Raspberry Pi Imager** (stap 2) één wifi-netwerk
+> vooraf invullen. Dat werkt ook, maar met het script kun je meerdere netwerken
+> bewaren en de voorkeur bepalen — en het werkt ook op een reeds voorbereide kaart.
+
+### 6b. Instellen ter plaatse via het toestel zelf (terugval)
+
+Als er geen wifi vooraf is ingesteld, maakt het toestel zélf een wifi-netwerk aan
+(dit staat standaard aan na de installatie):
 
 1. Zoek op je telefoon het wifi-netwerk **`ViejoolBel-Setup`** (wachtwoord staat
    op het toestel-label, standaard `belsetup2025`).
@@ -73,7 +108,7 @@ Als er nog geen wifi is: het toestel maakt zelf een wifi-netwerk aan.
 3. Vul de wifi van de school in. Het toestel verbindt en is daarna bereikbaar
    op `viejoolbel.local`.
 
-*(Zie `docs/onboarding.md` om de onboarding-service te activeren.)*
+*(Zie `docs/onboarding.md` voor de details.)*
 
 ## 7. Support op afstand (zonder aan het schoolnetwerk te raken)
 
@@ -123,6 +158,8 @@ sudo systemctl status viejoolbel     # status + laatste gezondheid
 ---
 
 ### Checklist na installatie
+- [ ] Wifi verbindt automatisch (vooraf ingesteld met `preseed_wifi.sh`, of via
+      `ViejoolBel-Setup`) en toestel is bereikbaar op `viejoolbel.local`
 - [ ] Wachtwoord gewijzigd
 - [ ] DS3231 RTC werkt (tijd klopt na herstart zonder internet)
 - [ ] Belgeluid getest via **Zelftest**
