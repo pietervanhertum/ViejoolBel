@@ -64,8 +64,14 @@ draait ViejoolBel en start het **vanzelf opnieuw op na een stroomonderbreking**.
 ## 5. Eerste keer inloggen
 
 - Open op je telefoon/computer: **`http://viejoolbel.local:8080`**
-- Log in met **`admin`** / **`changeme`**.
-- **Wijzig meteen het wachtwoord** (het dashboard blijft hiervoor waarschuwen).
+- Log in met gebruikersnaam **`admin`** en wachtwoord **`directeur`**.
+- **Wijzig het wachtwoord** als je het wil aanpassen (Instellingen →
+  "Wachtwoord wijzigen"). Zolang het nog op de standaardwaarde staat, blijft het
+  dashboard hiervoor waarschuwen.
+
+> 🔒 Dit wachtwoord (`admin` / `directeur`) staat **enkel** in deze
+> installatiegids, niet in de gebruikershandleiding voor het schoolpersoneel.
+> Geef het door aan wie het toestel mag beheren.
 
 ## 6. Installeren zonder dat er al wifi is
 
@@ -145,7 +151,14 @@ sudo /opt/viejoolbel/current/deploy/apply_update.sh v0.2.0
 ```
 
 Updates zijn veilig: bij een probleem draait het toestel **automatisch terug**
-naar de vorige werkende versie.
+naar de vorige werkende versie. Lijkt er niets te gebeuren na een update? Klik in
+de webinterface op **"Toon updatelog"** (bij Instellingen) om te zien wat er
+gebeurd is — daar staat de laatste stap en een eventuele fout.
+
+> 💡 De **versie** die het toestel écht draait, staat onderaan in de
+> webinterface. Ververst je na een update de pagina en zie je nog de oude
+> UI? Doe een **harde herlaad** (Ctrl+F5, of op de telefoon: pagina volledig
+> sluiten en opnieuw openen).
 
 ## 10. Handige commando's
 
@@ -155,14 +168,63 @@ sudo systemctl restart viejoolbel    # herstarten
 sudo systemctl status viejoolbel     # status + laatste gezondheid
 ```
 
+## 11. Instellen in de webinterface (na de installatie)
+
+Deze stappen doe je in de browser, ná stap 5. Ze bepalen hoe de bel bij deze
+school precies moet werken.
+
+### Uitvoer: audio en/of relais
+
+Ga naar **Instellingen → Uitvoer**. Hier zet je aan wat dit toestel gebruikt:
+
+- **Speaker/audio** aan als de school via een luidspreker belt.
+- **Relais** aan als het toestel de bestaande elektrische schoolbel schakelt.
+
+Belt de school **enkel via de speaker**? Zet het **relais uit**. Dan verdwijnt
+het relais overal uit beeld (bij "Bel nu", in het rooster en bij het plan van
+vandaag) en wordt het nooit geschakeld — dat maakt het scherm eenvoudiger voor
+het personeel.
+
+### Standaardbel kiezen
+
+Ga naar **Geluiden** en klik bij één geluid op **"Maak standaard"**. Die
+standaardbel wordt gebruikt door de **fysieke knop** op het toestel en staat
+voorgeselecteerd bij "Bel nu". Zo hoeft het personeel niets te kiezen.
+
+### Rooster, kalender en volume
+
+- Vul onder **Roosters** het weekrooster en de beltijden in.
+- Vul onder **Kalender** de vakanties en vrije dagen in.
+- Stel onder **Instellingen** het **volume** in (voor de speaker).
+
+### Back-up en herstellen
+
+Onder **Instellingen** kun je met **"Back-up"** de volledige configuratie
+(roosters, kalender, geluidsnamen en instellingen) als één bestand downloaden.
+Bewaar dat bestand goed. Met **"Herstellen"** zet je die configuratie terug op
+dit of een vervangend toestel — geluiden worden op naam teruggekoppeld.
+
 ---
 
-### Checklist na installatie
+### Checklist eerste gebruik (in de webinterface)
+Doe dit onmiddellijk na het inloggen, vóór je het toestel oplevert:
+- [ ] Ingelogd op `viejoolbel.local:8080` met `admin` / `directeur`
+- [ ] Wachtwoord gewijzigd (of bewust op standaard gelaten en doorgegeven)
+- [ ] **Uitvoer** ingesteld (speaker en/of relais; relais uit als enkel audio)
+- [ ] **Standaardbel** aangeduid bij Geluiden
+- [ ] Weekrooster (Roosters) ingevuld
+- [ ] Vakanties/vrije dagen (Kalender) ingevuld
+- [ ] Volume ingesteld en getest via **Zelftest**
+- [ ] **Back-up** gedownload en veilig bewaard
+
+---
+
+### Checklist na installatie (technisch)
 - [ ] Wifi verbindt automatisch (vooraf ingesteld met `preseed_wifi.sh`, of via
       `ViejoolBel-Setup`) en toestel is bereikbaar op `viejoolbel.local`
-- [ ] Wachtwoord gewijzigd
+- [ ] Installatiescript zonder fouten doorlopen; dienst draait
+      (`sudo systemctl status viejoolbel`)
 - [ ] DS3231 RTC werkt (tijd klopt na herstart zonder internet)
-- [ ] Belgeluid getest via **Zelftest**
-- [ ] Weekrooster + vakanties ingevuld
-- [ ] Meldingen (webhook + heartbeat) getest
+- [ ] Toestel start vanzelf op na een stroomonderbreking (test: stekker uit/in)
+- [ ] Meldingen (webhook + heartbeat) ingesteld en getest
 - [ ] Tailscale actief voor support op afstand

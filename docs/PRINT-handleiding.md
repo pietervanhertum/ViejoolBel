@@ -33,10 +33,16 @@ Bovenaan zie je meteen:
 
 ## De bel nú laten afgaan
 
-1. Kies onder **"Bel nu"** een geluid (of laat op *alleen relais* staan).
+1. Onder **"Bel nu"** staat al een **standaardbel** klaar. Wil je een ander
+   geluid? Kies het uit de lijst.
 2. Klik op de grote knop **🔔 Bel nu**.
 
-Handig voor een test, een oefening, of een onverwacht moment.
+Je krijgt kort een **bevestiging** in beeld dat de bel is afgegaan. Handig voor
+een test, een oefening, of een onverwacht moment.
+
+> Bij sommige scholen belt het toestel enkel via de **speaker** en is er geen
+> aparte relais-keuze zichtbaar. Dat is normaal — het is zo ingesteld door de
+> beheerder.
 
 ## "Vandaag stil" (bel uitzetten voor één dag)
 
@@ -58,8 +64,14 @@ Doe dit gerust af en toe, zeker vóór een belangrijke dag.
 
 ## Een geluid toevoegen
 
-Wil je een ander belgeluid? De beheerder kan onder **geluiden** een `.mp3`,
-`.wav` of `.ogg` uploaden en er een naam aan geven.
+Wil je een ander belgeluid? De beheerder kan onder **Geluiden** een `.mp3`,
+`.wav` of `.ogg` uploaden en er een naam aan geven. Met **"Maak standaard"**
+bepaalt de beheerder welk geluid standaard klaarstaat bij "Bel nu" en bij de
+knop op het toestel.
+
+*(Instellingen zoals het rooster, de kalender, het volume en een back-up van de
+configuratie beheert de beheerder. Elke wijziging die je opslaat, toont kort een
+bevestiging in beeld.)*
 
 ## Wachtwoord wijzigen
 
