@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 from pathlib import Path
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -19,6 +20,7 @@ from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
 from .. import __version__, auth, updater
+from .. import backup as backup_mod
 from ..bell import BellController
 from ..config import Settings
 from ..db import get_setting, session_scope, set_setting
@@ -440,17 +442,23 @@ def create_app(
         file: UploadFile,
         is_alarm: Annotated[bool, Form()] = False,
     ) -> JSONResponse:
+        name = name.strip()
+        if not name:
+            raise HTTPException(400, "Name is required")
         allowed = {".mp3", ".wav", ".ogg"}
         suffix = Path(file.filename or "").suffix.lower()
         if suffix not in allowed:
             raise HTTPException(400, f"Unsupported file type {suffix!r}")
-        settings.sounds_dir.mkdir(parents=True, exist_ok=True)
-        safe = f"{abs(hash(name)) % 10_000_000}{suffix}"
-        dest = settings.sounds_dir / safe
-        dest.write_bytes(await file.read())
+        # Reject a duplicate name BEFORE writing anything to disk, and use a
+        # collision-free unique filename (the old hash(name)%N could overwrite a
+        # different sound's file).
         with session_scope() as s:
             if s.scalar(select(Sound).where(Sound.name == name)):
                 raise HTTPException(409, "A sound with that name already exists")
+        settings.sounds_dir.mkdir(parents=True, exist_ok=True)
+        safe = f"{uuid4().hex}{suffix}"
+        (settings.sounds_dir / safe).write_bytes(await file.read())
+        with session_scope() as s:
             snd = Sound(name=name, filename=safe, is_alarm=is_alarm)
             s.add(snd)
             s.flush()
@@ -822,7 +830,7 @@ def create_app(
     @app.get("/api/update/check")
     def update_check(_: LoggedIn) -> JSONResponse:
         current = updater.current_version()
-        info = updater.check_latest(settings.update_repo)
+        info = updater.check_latest(settings.update_repo, token=settings.github_token or None)
         if info is None:
             return JSONResponse(
                 {
@@ -853,27 +861,27 @@ def create_app(
     @app.get("/api/backup")
     def backup(_: LoggedIn) -> JSONResponse:
         with session_scope() as s:
-            data = {
-                "version": __version__,
-                "day_types": [
-                    {
-                        "name": dt_.name,
-                        "is_default": dt_.is_default,
-                        "events": [
-                            {
-                                "at": e.at.strftime("%H:%M"),
-                                "duration": e.duration,
-                                "use_audio": e.use_audio,
-                                "use_relay": e.use_relay,
-                                "label": e.label,
-                            }
-                            for e in dt_.events
-                        ],
-                    }
-                    for dt_ in s.scalars(select(DayType))
-                ],
-            }
-        return JSONResponse(data)
+            data = backup_mod.export_config(s, timezone=settings.timezone)
+        return JSONResponse(
+            data,
+            headers={"Content-Disposition": 'attachment; filename="viejoolbel-backup.json"'},
+        )
+
+    @app.post("/api/restore")
+    async def restore(_: LoggedIn, file: UploadFile) -> JSONResponse:
+        import json as _json
+
+        try:
+            data = _json.loads(await file.read())
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise HTTPException(400, "Kon het bestand niet lezen (geen geldige JSON).") from exc
+        try:
+            with session_scope() as s:
+                report = backup_mod.import_config(s, data)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        scheduler.reload()
+        return JSONResponse(report.as_dict())
 
     return app
 

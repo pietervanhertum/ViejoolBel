@@ -52,6 +52,7 @@ a clean, tested, from-scratch implementation on a modern stack.
 | [`docs/onboarding.md`](docs/onboarding.md) | Headless first-boot WiFi setup |
 | [`docs/remote-support.md`](docs/remote-support.md) | Tailscale remote access |
 | [`docs/updates.md`](docs/updates.md) | How to publish a release and update the device |
+| [`docs/github-auth.md`](docs/github-auth.md) | Token setup so updates work on a private repo |
 | [`docs/PRINT-installatie.md`](docs/PRINT-installatie.md) | **Printable** Dutch install guide (for the installer) |
 | [`docs/PRINT-handleiding.md`](docs/PRINT-handleiding.md) | **Printable** Dutch user guide (for school staff) |
 

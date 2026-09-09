@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "viejoolbel"
-version = "0.1.0"
+version = "0.1.2"
 description = "Modern, calendar-aware school bell system for the Raspberry Pi"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -46,6 +46,7 @@ include = ["viejoolbel*"]
 
 [tool.setuptools.package-data]
 "viejoolbel.web" = ["templates/*.html", "static/*"]
+"viejoolbel" = ["assets/sounds/*.wav"]
 
 [tool.ruff]
 line-length = 100

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from .bell import BellController
 from .config import Settings
-from .db import init_engine
+from .db import init_engine, install_default_sounds, session_scope
 from .hardware import make_hardware
 from .hardware.base import BellHardware
 from .models import RingSource
@@ -60,6 +60,8 @@ class Service:
         self.settings = settings
         settings.ensure_dirs()
         init_engine(settings.db_path)
+        with session_scope() as s:
+            install_default_sounds(s, settings.sounds_dir)
         self.hardware = make_hardware(
             settings.hardware,
             relay_pin=settings.gpio_relay_pin,

@@ -52,11 +52,12 @@
       <input type="number" name="duration" value="8" min="1" max="120">
     </div>
     <div class="checks">
-      <label class="check"><input type="checkbox" name="use_audio" checked> audio</label>
+      <label class="check"><input type="checkbox" name="use_audio" checked> geluid</label>
       <label class="check"><input type="checkbox" name="use_relay" checked> relais</label>
     </div>
     <button class="btn btn-primary" type="submit">🔔 Bel nu</button>
   </form>
+  <p class="hint">Geluid = via de speaker · Relais = de elektrische bel.</p>
   <div class="form-actions">
     <form method="post" action="/api/self-test" class="inline" onsubmit="return postForm(this)">
       <button type="submit" class="btn">Zelftest</button>

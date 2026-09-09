@@ -31,6 +31,20 @@ def test_ring_now(auth_client: TestClient, service):
     assert len(service.hardware.rings) == 1
 
 
+def test_ring_now_honours_explicit_false(auth_client: TestClient, service):
+    # The UI sends explicit true/false for every checkbox; un-ticking "audio" must
+    # actually disable audio (regression: unchecked boxes used to be omitted and
+    # the server default of True won).
+    files = {"file": ("bel.wav", io.BytesIO(b"RIFFfake"), "audio/wav")}
+    sid = auth_client.post("/api/sounds", data={"name": "T"}, files=files).json()["id"]
+    auth_client.post(
+        "/api/ring-now",
+        data={"sound_id": sid, "duration": 2, "use_audio": "false", "use_relay": "true"},
+    )
+    last = service.hardware.rings[-1]
+    assert last.use_audio is False and last.use_relay is True
+
+
 def test_ring_now_conflict_when_ringing(auth_client: TestClient, service):
     service.controller._lock.acquire()
     try:

@@ -1,3 +1,3 @@
 """ViejoolBel — a modern, calendar-aware school bell system for the Raspberry Pi."""
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"
