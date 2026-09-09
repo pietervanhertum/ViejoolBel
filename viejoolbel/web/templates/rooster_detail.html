@@ -33,7 +33,10 @@
     <form method="post" action="/api/events/{{ e.id }}" class="field-row event-row"
           onsubmit="return postForm(this)">
       <div style="max-width:120px"><label>Tijd</label>
-        <input type="time" name="at" value="{{ e.at }}" required></div>
+        <input class="time24" name="at" value="{{ e.at }}" required
+               inputmode="numeric" maxlength="5" placeholder="uu:mm"
+               pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
+               title="24-uursnotatie, bv. 08:30 of 14:00"></div>
       <div><label>Label</label><input name="label" value="{{ e.label }}" placeholder="bv. Pauze"></div>
       <div><label>Geluid</label>
         <select name="sound_id">
@@ -69,7 +72,11 @@
   <h2>Belmoment toevoegen</h2>
   <form method="post" action="/api/day-types/{{ day_type.id }}/events" class="field-row"
         onsubmit="return postForm(this)">
-    <div style="max-width:130px"><label>Tijd</label><input type="time" name="at" required></div>
+    <div style="max-width:130px"><label>Tijd</label>
+      <input class="time24" name="at" required
+             inputmode="numeric" maxlength="5" placeholder="uu:mm"
+             pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
+             title="24-uursnotatie, bv. 08:30 of 14:00"></div>
     <div><label>Label</label><input name="label" placeholder="bv. Start school"></div>
     <div>
       <label>Geluid</label>

@@ -25,7 +25,13 @@ TimeoutStartSec=60
 # The health monitor pings the watchdog every ~10 s; 30 s gives ample margin.
 WatchdogSec=30
 # Hardening
-NoNewPrivileges=true
+# NOTE: we deliberately do NOT set NoNewPrivileges=true. The web app performs its
+# privileged actions (self-update, service restart, reboot, WiFi changes) by
+# invoking a handful of tightly-scoped helpers through sudo (see
+# deploy/sudoers.d/viejoolbel). NoNewPrivileges propagates to every child process
+# and blocks setuid binaries, so with it set sudo fails with "the 'no new
+# privileges' flag is set" and the update button does nothing. The privilege
+# surface is instead constrained by the exact-command sudoers allowlist (NFR-4).
 ProtectSystem=full
 ProtectHome=true
 PrivateTmp=true

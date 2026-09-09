@@ -26,7 +26,7 @@
 
 <section class="card">
   <h2>Vandaag</h2>
-  <p class="bigclock">{{ now.strftime('%A %d/%m/%Y — %H:%M') }}</p>
+  <p class="bigclock">{{ now | nl_datetime }}</p>
   {% if resolution.closed %}
     <p class="status closed">Gesloten — {{ resolution.reason }} (geen automatische bellen)</p>
   {% else %}

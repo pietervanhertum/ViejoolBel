@@ -3,6 +3,21 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.8] - 2026-09-09
+
+### Fixed
+- **The update button now works.** The systemd unit set `NoNewPrivileges=true`,
+  which propagates to child processes and blocks setuid binaries — so the
+  sudo-based updater failed with *"the 'no new privileges' flag is set"* and the
+  update did nothing. The flag is removed; privilege is still tightly scoped by
+  the exact-command sudoers allowlist.
+
+### Changed
+- **Dates and times are shown in Dutch, 24-hour, everywhere.** The overview
+  clock now reads e.g. *"woensdag 9 september 2026 — 17:30"* instead of an
+  English weekday. Bell-time entry uses forced 24-hour fields (`uu:mm`) rather
+  than the native time picker, which showed AM/PM in English-locale browsers.
+
 ## [0.1.7] - 2026-09-09
 
 ### Added

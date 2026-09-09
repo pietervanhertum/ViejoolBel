@@ -105,3 +105,41 @@ function playSound(id) {
   const audio = new Audio('/api/sounds/' + id + '/audio');
   audio.play().catch(e => alert('Kan geluid niet afspelen: ' + e));
 }
+
+// 24-hour time entry (class "time24"). We use a plain text field rather than a
+// native <input type="time"> because the native picker follows the browser's
+// locale and shows AM/PM in English-locale browsers — the school wants 24h
+// always. While typing we keep only digits and a colon; on leaving the field we
+// normalise "830"/"8:3"/"8" into a zero-padded "HH:MM" the API accepts.
+function normalizeTime24(el) {
+  const raw = el.value.replace(/[^0-9:]/g, '');
+  if (!raw) { el.value = ''; return; }
+  let h, m;
+  if (raw.includes(':')) {
+    const parts = raw.split(':');
+    h = parts[0]; m = parts[1] || '0';
+  } else if (raw.length <= 2) {
+    h = raw; m = '0';
+  } else {
+    h = raw.slice(0, raw.length - 2); m = raw.slice(-2);
+  }
+  let hi = parseInt(h, 10); if (isNaN(hi)) hi = 0;
+  let mi = parseInt(m, 10); if (isNaN(mi)) mi = 0;
+  hi = Math.min(23, Math.max(0, hi));
+  mi = Math.min(59, Math.max(0, mi));
+  el.value = String(hi).padStart(2, '0') + ':' + String(mi).padStart(2, '0');
+}
+
+document.addEventListener('input', (e) => {
+  const el = e.target;
+  if (el && el.classList && el.classList.contains('time24')) {
+    el.value = el.value.replace(/[^0-9:]/g, '');
+  }
+});
+// blur does not bubble, so listen for focusout (which does).
+document.addEventListener('focusout', (e) => {
+  const el = e.target;
+  if (el && el.classList && el.classList.contains('time24')) {
+    normalizeTime24(el);
+  }
+});

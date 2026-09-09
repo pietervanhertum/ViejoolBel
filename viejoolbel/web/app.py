@@ -42,6 +42,28 @@ from ..scheduler import BellScheduler
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 
+# Dutch localisation for user-facing dates. Python's strftime emits English
+# month/weekday names under the default C locale regardless of the app language,
+# and relying on a system nl_NL locale being installed on every device is fragile
+# — so we localise explicitly. Times are always shown 24-hour (never AM/PM).
+_NL_WEEKDAYS = [
+    "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag",
+]
+_NL_MONTHS = [
+    "", "januari", "februari", "maart", "april", "mei", "juni", "juli",
+    "augustus", "september", "oktober", "november", "december",
+]
+
+
+def nl_date(value: dt.date) -> str:
+    """A full Dutch date, e.g. 'woensdag 9 september 2026'."""
+    return f"{_NL_WEEKDAYS[value.weekday()]} {value.day} {_NL_MONTHS[value.month]} {value.year}"
+
+
+def nl_datetime(value: dt.datetime) -> str:
+    """A full Dutch date with 24-hour time, e.g. 'woensdag 9 september 2026 — 17:30'."""
+    return f"{nl_date(value)} — {value:%H:%M}"
+
 
 def require_login(request: Request) -> str:
     """Auth dependency. Defined at module scope so FastAPI can resolve the
@@ -70,6 +92,8 @@ def create_app(
     app.state.monitor = monitor
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    templates.env.filters["nl_date"] = nl_date
+    templates.env.filters["nl_datetime"] = nl_datetime
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -296,15 +320,13 @@ def create_app(
         prev_y = y - 1 if m == 1 else y
         next_m = m % 12 + 1
         next_y = y + 1 if m == 12 else y
-        month_names = ["", "januari", "februari", "maart", "april", "mei", "juni", "juli",
-                       "augustus", "september", "oktober", "november", "december"]
         return _page(
             request,
             "kalender.html",
             "kalender",
             year=y,
             month=m,
-            month_name=month_names[m],
+            month_name=_NL_MONTHS[m],
             first_weekday=first_weekday,
             cells=cells,
             rules=rules,
