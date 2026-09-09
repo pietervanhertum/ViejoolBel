@@ -15,13 +15,16 @@ TAG="${1:?usage: apply_update.sh <git-tag>}"
 OPT_DIR="/opt/viejoolbel"
 RELEASES_DIR="${OPT_DIR}/releases"
 ENV_FILE="/etc/viejoolbel/viejoolbel.env"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 
-# Load VIEJOOLBEL_UPDATE_REPO and (for a private repo) VIEJOOLBEL_GITHUB_TOKEN.
-if [[ -f "${ENV_FILE}" ]]; then
-  set -a; . "${ENV_FILE}"; set +a
-fi
+# Read VIEJOOLBEL_UPDATE_REPO and (for a private repo) VIEJOOLBEL_GITHUB_TOKEN
+# from the env file *safely* — never source it (see lib_env.sh).
+# shellcheck source=lib_env.sh
+. "${HERE}/lib_env.sh"
+VIEJOOLBEL_GITHUB_TOKEN="$(viejoolbel_read_env "${ENV_FILE}" VIEJOOLBEL_GITHUB_TOKEN)"
 
-REPO="${VIEJOOLBEL_UPDATE_REPO:-https://github.com/pietervanhertum/ViejoolBel}"
+REPO="$(viejoolbel_read_env "${ENV_FILE}" VIEJOOLBEL_UPDATE_REPO)"
+REPO="${REPO:-https://github.com/pietervanhertum/ViejoolBel}"
 NEW_DIR="${RELEASES_DIR}/${TAG}"
 PREV_TARGET="$(readlink -f "${OPT_DIR}/current" || true)"
 

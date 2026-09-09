@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [0.1.3] - 2026-09-09
 
 ### Fixed
+- **A malformed line in the env file aborted every update.** `apply_update.sh`
+  *sourced* `/etc/viejoolbel/viejoolbel.env` with bash, so a value bash could not
+  source (e.g. a space after `=`, as in `VIEJOOLBEL_GITHUB_TOKEN= github_pat_…`)
+  made bash try to run the token as a command ("command not found") and stopped
+  the update before it began. The env file is now parsed safely with text tools
+  (`deploy/lib_env.sh`), tolerant of surrounding whitespace and quotes, and is
+  never executed.
 - **The browser kept running the old JavaScript after an update**, so UI fixes
   (like "Bel nu" no longer navigating to the raw JSON) appeared to have no effect
   until a hard refresh. Static assets are now cache-busted per version
