@@ -148,6 +148,8 @@ def create_app(
                 "health": report,
                 "webhook_url": webhook_url,
                 "heartbeat_url": heartbeat_url,
+                "relay_enabled": _relay_enabled(),
+                "default_sound_id": _default_sound_id(),
             },
         )
 
@@ -159,6 +161,18 @@ def create_app(
         base: dict[str, object] = {"version": app_version, "active": active}
         base.update(ctx)
         return templates.TemplateResponse(request, template, base)
+
+    def _relay_enabled() -> bool:
+        with session_scope() as s:
+            return get_setting(s, "relay_enabled", "1") != "0"
+
+    def _default_sound_id() -> int | None:
+        with session_scope() as s:
+            raw = get_setting(s, "default_sound_id", "")
+        try:
+            return int(raw) if raw else None
+        except ValueError:
+            return None
 
     @app.get("/roosters", response_class=HTMLResponse, response_model=None)
     def roosters_page(request: Request) -> HTMLResponse | RedirectResponse:
@@ -227,6 +241,7 @@ def create_app(
             day_type=day_type,
             events=events,
             sounds=sounds,
+            relay_enabled=_relay_enabled(),
         )
 
     @app.get("/kalender", response_class=HTMLResponse, response_model=None)
@@ -316,7 +331,10 @@ def create_app(
                 }
                 for snd in s.scalars(select(Sound))
             ]
-        return _page(request, "geluiden.html", "geluiden", sounds=sounds)
+        return _page(
+            request, "geluiden.html", "geluiden", sounds=sounds,
+            default_sound_id=_default_sound_id(),
+        )
 
     @app.get("/instellingen", response_class=HTMLResponse, response_model=None)
     def instellingen_page(request: Request) -> HTMLResponse | RedirectResponse:
@@ -336,6 +354,7 @@ def create_app(
             volume_db=volume_db,
             timezone=settings.timezone,
             default_pw=default_pw,
+            relay_enabled=_relay_enabled(),
         )
 
     # --- status API ------------------------------------------------------
@@ -492,6 +511,16 @@ def create_app(
                 raise HTTPException(409, "Sound is still used by one or more bell events")
             (settings.sounds_dir / snd.filename).unlink(missing_ok=True)
             s.delete(snd)
+            if get_setting(s, "default_sound_id", "") == str(sound_id):
+                set_setting(s, "default_sound_id", "")  # the default was deleted
+        return JSONResponse({"ok": True})
+
+    @app.post("/api/sounds/{sound_id}/default")
+    def set_default_sound(_: LoggedIn, sound_id: int) -> JSONResponse:
+        with session_scope() as s:
+            if s.get(Sound, sound_id) is None:
+                raise HTTPException(404, "No such sound")
+            set_setting(s, "default_sound_id", str(sound_id))
         return JSONResponse({"ok": True})
 
     @app.get("/api/sounds/{sound_id}/audio")
@@ -841,6 +870,12 @@ def create_app(
         with session_scope() as s:
             set_setting(s, "volume_db", str(volume_db))
         return JSONResponse({"ok": True})
+
+    @app.post("/api/settings/relay")
+    def set_relay_enabled(_: LoggedIn, enabled: Annotated[bool, Form()] = True) -> JSONResponse:
+        with session_scope() as s:
+            set_setting(s, "relay_enabled", "1" if enabled else "0")
+        return JSONResponse({"ok": True, "relay_enabled": enabled})
 
     # --- software update -------------------------------------------------
     @app.get("/api/update/check")

@@ -53,7 +53,9 @@ class BellController:
                 sound_path=sound_path if use_audio else None,
                 duration=float(duration),
                 use_audio=use_audio and sound_path is not None,
-                use_relay=use_relay,
+                # A globally-disabled relay is never energised, whatever an event
+                # or caller asks for (single source of truth).
+                use_relay=use_relay and self._relay_enabled(),
                 volume_db=self._volume_db(),
             )
             ok, detail = True, ""
@@ -98,6 +100,10 @@ class BellController:
                 return int(get_setting(s, "volume_db", "0") or "0")
             except ValueError:
                 return 0
+
+    def _relay_enabled(self) -> bool:
+        with session_scope() as s:
+            return get_setting(s, "relay_enabled", "1") != "0"
 
     def _log_ring(
         self, source: RingSource, sound_name: str, request: RingRequest, ok: bool, detail: str

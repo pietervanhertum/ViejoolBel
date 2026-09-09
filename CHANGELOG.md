@@ -3,6 +3,17 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.7] - 2026-09-09
+
+### Added
+- **Relay master switch** in Instellingen. Schools that only ring through the
+  speaker can turn the relay off; when disabled it is hidden everywhere (Bel nu,
+  the schedule editor and today's plan) and is never energised, whatever an event
+  or caller requests.
+- **Default bell** in Geluiden. Mark one sound as the default; it is used by the
+  physical button on the device and is pre-selected in "Bel nu". Deleting the
+  default clears the setting.
+
 ## [0.1.6] - 2026-09-09
 
 ### Added

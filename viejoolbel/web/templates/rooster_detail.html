@@ -37,7 +37,7 @@
       <div><label>Label</label><input name="label" value="{{ e.label }}" placeholder="bv. Pauze"></div>
       <div><label>Geluid</label>
         <select name="sound_id">
-          <option value="">(alleen relais)</option>
+          <option value="">{{ '(alleen relais)' if relay_enabled else '(geen geluid)' }}</option>
           {% for snd in sounds %}
           <option value="{{ snd.id }}" {{ 'selected' if snd.id == e.sound_id }}>{{ snd.name }}</option>
           {% endfor %}
@@ -49,7 +49,9 @@
         <label>Uitvoer</label>
         <div class="checks">
           <label class="check"><input type="checkbox" name="use_audio" {{ 'checked' if e.use_audio }}> audio</label>
+          {% if relay_enabled %}
           <label class="check"><input type="checkbox" name="use_relay" {{ 'checked' if e.use_relay }}> relais</label>
+          {% endif %}
         </div>
       </div>
       <div style="flex:0 0 auto" class="row-actions">

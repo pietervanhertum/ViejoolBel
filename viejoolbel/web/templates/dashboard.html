@@ -43,8 +43,9 @@
     <div>
       <label>Geluid</label>
       <select name="sound_id">
-        <option value="">(alleen relais)</option>
-        {% for snd in sounds %}<option value="{{ snd.id }}">{{ snd.name }}</option>{% endfor %}
+        <option value="">{{ '(alleen relais)' if relay_enabled else '(geen geluid)' }}</option>
+        {% for snd in sounds %}<option value="{{ snd.id }}"
+          {{ 'selected' if snd.id == default_sound_id }}>{{ snd.name }}</option>{% endfor %}
       </select>
     </div>
     <div style="max-width:110px">
@@ -53,11 +54,15 @@
     </div>
     <div class="checks">
       <label class="check"><input type="checkbox" name="use_audio" checked> geluid</label>
+      {% if relay_enabled %}
       <label class="check"><input type="checkbox" name="use_relay" checked> relais</label>
+      {% endif %}
     </div>
     <button class="btn btn-primary" type="submit">🔔 Bel nu</button>
   </form>
+  {% if relay_enabled %}
   <p class="hint">Geluid = via de speaker · Relais = de elektrische bel.</p>
+  {% endif %}
   <div class="form-actions">
     <form method="post" action="/api/self-test" class="inline" onsubmit="return postForm(this)">
       <button type="submit" class="btn">Zelftest</button>
@@ -74,11 +79,12 @@
     <h2>Rooster vandaag</h2>
     {% if plan %}
     <div class="table-wrap"><table>
-      <thead><tr><th>Tijd</th><th>Label</th><th>Audio</th><th>Relais</th></tr></thead>
+      <thead><tr><th>Tijd</th><th>Label</th><th>Audio</th>{% if relay_enabled %}<th>Relais</th>{% endif %}</tr></thead>
       <tbody>
       {% for p in plan %}
         <tr><td><strong>{{ p.at.strftime('%H:%M') }}</strong></td><td>{{ p.label or '—' }}</td>
-            <td>{{ '✓' if p.use_audio else '' }}</td><td>{{ '✓' if p.use_relay else '' }}</td></tr>
+            <td>{{ '✓' if p.use_audio else '' }}</td>
+            {% if relay_enabled %}<td>{{ '✓' if p.use_relay else '' }}</td>{% endif %}</tr>
       {% endfor %}
       </tbody>
     </table></div>

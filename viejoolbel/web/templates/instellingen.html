@@ -28,6 +28,18 @@
 </section>
 
 <section class="card">
+  <h2>Uitvoer</h2>
+  <p class="sub">Gebruik je een <strong>relais</strong> voor een fysieke/elektrische
+    bel? Zet dit uit als je toestel alleen via de speaker belt — dan verdwijnt de
+    relais-optie overal uit de interface.</p>
+  <form method="post" action="/api/settings/relay" class="field-row" onsubmit="return postForm(this)">
+    <label class="check"><input type="checkbox" name="enabled" {{ 'checked' if relay_enabled }}>
+      Relais (elektrische bel) gebruiken</label>
+    <button class="btn" type="submit">Opslaan</button>
+  </form>
+</section>
+
+<section class="card">
   <h2>Meldingen bij problemen <span class="badge badge-muted">geavanceerd</span></h2>
   <p class="sub">Optioneel, meestal door de beheerder ingesteld. Een webhook
     (bv. ntfy.sh, Discord, Slack) krijgt een bericht zodra er iets misgaat. De

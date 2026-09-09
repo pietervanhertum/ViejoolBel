@@ -7,7 +7,9 @@
 <section class="card">
   <h2>Belgeluiden</h2>
   <p class="sub">Upload de geluiden die je bij belmomenten wilt gebruiken
-    (mp3, wav of ogg). Beluister ze met ▶ en verwijder wat je niet meer nodig hebt.</p>
+    (mp3, wav of ogg). Beluister ze met ▶ en verwijder wat je niet meer nodig hebt.
+    De <strong>standaardbel</strong> wordt gebruikt door de fysieke knop op het
+    toestel en staat voorgeselecteerd bij “Bel nu”.</p>
 
   {% if sounds %}
   <div class="table-wrap"><table>
@@ -15,12 +17,17 @@
     <tbody>
     {% for snd in sounds %}
       <tr>
-        <td><strong>{{ snd.name }}</strong></td>
+        <td><strong>{{ snd.name }}</strong>
+          {% if snd.id == default_sound_id %}<span class="badge badge-default">standaard</span>{% endif %}
+        </td>
         <td>{% if snd.is_alarm %}<span class="badge badge-alarm">alarm</span>
             {% else %}<span class="badge badge-audio">bel</span>{% endif %}</td>
         <td>{{ 'ja' if snd.in_use else '—' }}</td>
         <td class="row-actions">
           <button class="btn btn-sm" onclick="playSound({{ snd.id }})">▶ Beluister</button>
+          {% if snd.id != default_sound_id %}
+          <button class="btn btn-sm" onclick="apiPost('/api/sounds/{{ snd.id }}/default')">Maak standaard</button>
+          {% endif %}
           <button class="btn btn-sm btn-danger" {{ 'disabled title=In-gebruik' if snd.in_use }}
             onclick="apiDelete('/api/sounds/{{ snd.id }}', 'Geluid “{{ snd.name }}” verwijderen?')">Verwijderen</button>
         </td>
