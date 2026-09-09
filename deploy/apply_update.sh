@@ -73,6 +73,14 @@ log "Flipping 'current' symlink to ${NEW_DIR}"
 ln -sfn "${NEW_DIR}" "${OPT_DIR}/current"
 chown -R viejoolbel:viejoolbel "${NEW_DIR}"
 
+# Record the installed tag so the app reports the deployed version (and the update
+# check compares tag-to-tag), even when the code's __version__ lags the tag.
+DATA_DIR="$(viejoolbel_read_env "${ENV_FILE}" VIEJOOLBEL_DATA_DIR)"
+DATA_DIR="${DATA_DIR:-/var/lib/viejoolbel}"
+mkdir -p "${DATA_DIR}"
+printf '%s' "${TAG}" > "${DATA_DIR}/installed_version"
+chown viejoolbel:viejoolbel "${DATA_DIR}/installed_version" 2>/dev/null || true
+
 log "Restarting service"
 systemctl restart viejoolbel.service
 sleep 3

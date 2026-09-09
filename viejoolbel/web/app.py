@@ -19,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import __version__, auth, updater
+from .. import auth, updater
 from .. import backup as backup_mod
 from ..bell import BellController
 from ..config import Settings
@@ -61,7 +61,8 @@ def create_app(
     settings: Settings,
     monitor: HealthMonitor | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="ViejoolBel", version=__version__)
+    app_version = updater.current_version(settings.data_dir)
+    app = FastAPI(title="ViejoolBel", version=app_version)
     app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, max_age=7 * 24 * 3600)
     app.state.controller = controller
     app.state.scheduler = scheduler
@@ -86,7 +87,7 @@ def create_app(
     @app.get("/login", response_class=HTMLResponse)
     def login_form(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
-            request, "login.html", {"error": None, "version": __version__}
+            request, "login.html", {"error": None, "version": app_version}
         )
 
     @app.post("/login", response_model=None)
@@ -101,7 +102,7 @@ def create_app(
             return templates.TemplateResponse(
                 request,
                 "login.html",
-                {"error": "Invalid credentials", "version": __version__},
+                {"error": "Invalid credentials", "version": app_version},
                 status_code=401,
             )
         request.session["user"] = username
@@ -134,7 +135,7 @@ def create_app(
             request,
             "dashboard.html",
             {
-                "version": __version__,
+                "version": app_version,
                 "now": now,
                 "resolution": resolution,
                 "plan": plan,
@@ -155,7 +156,7 @@ def create_app(
         return None if request.session.get("user") else RedirectResponse("/login", status_code=303)
 
     def _page(request: Request, template: str, active: str, **ctx: object) -> HTMLResponse:
-        base: dict[str, object] = {"version": __version__, "active": active}
+        base: dict[str, object] = {"version": app_version, "active": active}
         base.update(ctx)
         return templates.TemplateResponse(request, template, base)
 
@@ -347,7 +348,7 @@ def create_app(
         nxt = scheduler.next_ring()
         return JSONResponse(
             {
-                "version": __version__,
+                "version": app_version,
                 "time": now.isoformat(),
                 "timezone": settings.timezone,
                 "closed": resolution.closed,
@@ -844,7 +845,7 @@ def create_app(
     # --- software update -------------------------------------------------
     @app.get("/api/update/check")
     def update_check(_: LoggedIn) -> JSONResponse:
-        current = updater.current_version()
+        current = updater.current_version(settings.data_dir)
         info = updater.check_latest(settings.update_repo, token=settings.github_token or None)
         if info is None:
             return JSONResponse(
@@ -857,7 +858,7 @@ def create_app(
             )
         return JSONResponse(
             {
-                "available": updater.is_newer(info.tag),
+                "available": updater.is_newer(info.tag, current),
                 "current": current,
                 "latest": info.tag,
                 "notes": info.notes,

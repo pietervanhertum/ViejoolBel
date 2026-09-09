@@ -54,8 +54,19 @@ def check_latest(
     """Query the repository's latest release. Returns None if none/unreachable.
 
     Pass *token* (a GitHub PAT or fine-grained token) to reach a **private**
-    repository's API; without it the API returns 404 for private repos.
+    repository's API; without it the API returns 404 for private repos. If a token
+    is given but rejected (a stale/expired token returns HTTP 401 even for a public
+    repo), we retry once anonymously, so a leftover bad token never blocks updates
+    on a public repository.
     """
+    token = (token or "").strip() or None
+    info = _fetch_release(repo, token, timeout)
+    if info is None and token is not None:
+        info = _fetch_release(repo, None, timeout)
+    return info
+
+
+def _fetch_release(repo: str, token: str | None, timeout: float) -> ReleaseInfo | None:
     headers = {"Accept": "application/vnd.github+json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -64,7 +75,7 @@ def check_latest(
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (trusted host)
             data = json.load(resp)
     except Exception as exc:
-        log.warning("Update check failed: %s", exc)
+        log.warning("Update check failed (token=%s): %s", bool(token), exc)
         return None
     tag = data.get("tag_name")
     if not tag:
@@ -72,7 +83,17 @@ def check_latest(
     return ReleaseInfo(tag=tag, url=data.get("html_url", ""), notes=data.get("body", "") or "")
 
 
-def current_version() -> str:
+def current_version(data_dir: Path | None = None) -> str:
+    """The running version. Prefer the installed release tag (written by
+    apply_update.sh) so it matches what was actually deployed, even when the code's
+    ``__version__`` lags the release tag; fall back to ``__version__``."""
+    if data_dir is not None:
+        try:
+            tag = (data_dir / "installed_version").read_text().strip()
+            if tag:
+                return tag
+        except OSError:
+            pass
     return __version__
 
 

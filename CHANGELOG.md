@@ -3,7 +3,7 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.1.6] - 2026-09-09
 
 ### Added
 - **Zero-touch WiFi for devices you ship but don't install yourself.** A new
@@ -20,6 +20,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   services (so they don't fight NetworkManager), and enables
   `viejoolbel-ap.service` as an offline fallback. Preseeded WiFi still takes
   precedence; the portal only appears when no known network is joined.
+
+### Fixed
+- **A stale/expired GitHub token blocked the update check with HTTP 401**, even on
+  a public repo (GitHub validates the token whenever one is sent). The check now
+  retries anonymously when a token is rejected, so a leftover bad token no longer
+  breaks updates on a public repository. The token is also whitespace-trimmed.
+- **The device showed the code's `__version__` (e.g. 0.1.3) instead of the release
+  it was actually running (e.g. v0.1.5)**, which also made the update check offer
+  the same version in a loop. `apply_update.sh` now records the installed tag and
+  the app reports that, so the displayed version matches the deployment and the
+  update check compares tag-to-tag.
+- **Default bell sounds were missing on devices first installed before the feature
+  existed.** They were only seeded into a brand-new database. Seeding now runs once
+  (guarded by a flag) and adds any missing defaults by name on upgrade, without
+  touching the user's own uploads.
 
 ## [0.1.3] - 2026-09-09
 
