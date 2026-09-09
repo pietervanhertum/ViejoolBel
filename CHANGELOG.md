@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [0.1.3] - 2026-09-09
 
 ### Fixed
+- **The browser kept running the old JavaScript after an update**, so UI fixes
+  (like "Bel nu" no longer navigating to the raw JSON) appeared to have no effect
+  until a hard refresh. Static assets are now cache-busted per version
+  (`/static/app.js?v=<version>`) and HTML pages send `Cache-Control: no-cache`, so
+  a new version's JS/CSS is always fetched.
 - **Software updates ran silently.** The apply script's output was sent to
   `/dev/null`, so a failed clone, a failed `pip install` (e.g. no internet), or a
   failed health check produced a "202 Accepted" and then nothing visible. Output

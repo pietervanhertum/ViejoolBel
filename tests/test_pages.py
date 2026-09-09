@@ -36,3 +36,22 @@ def test_rooster_detail_404(auth_client: TestClient):
 def test_kalender_month_navigation(auth_client: TestClient):
     resp = auth_client.get("/kalender?year=2025&month=12")
     assert resp.status_code == 200 and "december 2025" in resp.text
+
+
+def test_static_assets_are_cache_busted(auth_client: TestClient):
+    # After an update the browser must fetch the new JS/CSS, so the URLs carry a
+    # version query and the HTML itself is not cached (regression: a stale cached
+    # app.js kept the old behaviour and made UI fixes look ineffective).
+    from viejoolbel import __version__
+
+    resp = auth_client.get("/")
+    assert f"/static/app.js?v={__version__}" in resp.text
+    assert f"/static/style.css?v={__version__}" in resp.text
+    assert resp.headers.get("cache-control") == "no-cache"
+
+
+def test_login_page_is_cache_busted(client: TestClient):
+    from viejoolbel import __version__
+
+    resp = client.get("/login")
+    assert f"/static/app.js?v={__version__}" in resp.text

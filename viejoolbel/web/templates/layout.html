@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Schoolbel — de Viejool{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v={{ version | default('') }}">
 </head>
 <body>
   <header class="appbar">
@@ -39,7 +39,7 @@
     <small>ViejoolBel {{ version }} · Basisschool de Viejool, Eksel</small>
   </footer>
   <div id="toast" class="toast" hidden></div>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v={{ version | default('') }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
