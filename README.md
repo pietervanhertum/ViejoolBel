@@ -22,8 +22,9 @@ a clean, tested, from-scratch implementation on a modern stack.
 - 📱 **Web interface over WiFi** — a full, branded management UI (for *Basisschool
   de Viejool*, Eksel): edit schedules and bell times, manage day-types and the
   weekly layout, a month calendar for holidays/exceptions, upload sounds, ring the
-  bell now, "silence today", and see history. Password protected, served over
-  HTTPS. See [`docs/screenshots/`](docs/screenshots).
+  bell now, "silence today", and see history. Password protected; reachable on the
+  local network and, for remote support, over the Tailscale tunnel (see below), which
+  encrypts all traffic end-to-end. See [`docs/screenshots/`](docs/screenshots).
 - 📡 **Headless onboarding** — preseed the site's WiFi before you ship it and the
   device joins on power-up with zero on-site setup; if it isn't known in advance,
   the Pi opens its own access point + captive portal so someone on-site can enter
