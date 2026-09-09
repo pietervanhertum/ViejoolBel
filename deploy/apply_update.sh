@@ -51,6 +51,40 @@ health_check() {
     "$1/.venv/bin/python" -c "from viejoolbel.service import Service; from viejoolbel.config import Settings; s=Service(Settings(hardware='mock')); s.build_app(); s.stop(); print('ok')"
 }
 
+# Re-install the systemd unit and sudoers rule from a release directory, so that
+# deployment-config fixes (e.g. a changed unit) reach the device through the
+# normal update instead of needing a manual install.sh re-run. Best-effort: a
+# failure here is logged, never fatal, so an update is never blocked by it.
+#   * The sudoers file is syntax-checked with visudo BEFORE it replaces the live
+#     one — a malformed rule could otherwise lock out sudo entirely.
+#   * Writes land in /etc, which the unit exposes to this root helper via
+#     ReadWritePaths (ProtectSystem=full otherwise makes /etc read-only for the
+#     service and its children).
+install_deploy_config() {
+  local src="$1"
+  local unit_src="${src}/deploy/systemd/viejoolbel.service"
+  local sudo_src="${src}/deploy/sudoers.d/viejoolbel"
+
+  if [[ -f "${unit_src}" ]]; then
+    if install -m 644 "${unit_src}" /etc/systemd/system/viejoolbel.service 2>/dev/null; then
+      systemctl daemon-reload || true
+      log "Refreshed systemd unit from ${src}."
+    else
+      log "WARN: could not write the systemd unit (left as-is)."
+    fi
+  fi
+
+  if [[ -f "${sudo_src}" ]]; then
+    if ! visudo -cf "${sudo_src}" >/dev/null 2>&1; then
+      log "WARN: new sudoers rule failed validation; keeping the current one."
+    elif install -m 440 "${sudo_src}" /etc/sudoers.d/viejoolbel 2>/dev/null; then
+      log "Refreshed sudoers rule from ${src}."
+    else
+      log "WARN: could not write the sudoers rule (left as-is)."
+    fi
+  fi
+}
+
 log "Fetching ${TAG} from ${REPO}"
 rm -rf "${NEW_DIR}"
 git clone --depth 1 --branch "${TAG}" "$(clone_url)" "${NEW_DIR}"
@@ -81,6 +115,9 @@ mkdir -p "${DATA_DIR}"
 printf '%s' "${TAG}" > "${DATA_DIR}/installed_version"
 chown viejoolbel:viejoolbel "${DATA_DIR}/installed_version" 2>/dev/null || true
 
+log "Refreshing deployment config (systemd unit + sudoers) from ${TAG}"
+install_deploy_config "${NEW_DIR}"
+
 log "Restarting service"
 systemctl restart viejoolbel.service
 sleep 3
@@ -93,6 +130,9 @@ fi
 log "Service failed to come up; rolling back."
 if [[ -n "${PREV_TARGET}" ]]; then
   ln -sfn "${PREV_TARGET}" "${OPT_DIR}/current"
+  # Restore the previous release's unit/sudoers too, in case a changed unit is
+  # what kept the new version from starting.
+  install_deploy_config "${PREV_TARGET}"
   systemctl restart viejoolbel.service
   log "Rolled back to ${PREV_TARGET}."
 fi
