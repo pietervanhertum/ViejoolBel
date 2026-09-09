@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     def sounds_dir(self) -> Path:
         return self.data_dir / "sounds"
 
+    @property
+    def update_log(self) -> Path:
+        return self.data_dir / "update.log"
+
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.sounds_dir.mkdir(parents=True, exist_ok=True)

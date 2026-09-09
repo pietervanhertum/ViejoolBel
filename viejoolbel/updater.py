@@ -21,6 +21,7 @@ import subprocess
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+from typing import IO
 
 from . import __version__
 
@@ -100,7 +101,7 @@ def is_valid_tag(tag: str) -> bool:
     return bool(_TAG_SAFE_RE.match(tag)) and any(c.isdigit() for c in tag)
 
 
-def launch_update(tag: str, script: Path) -> tuple[bool, str]:
+def launch_update(tag: str, script: Path, *, log_path: Path | None = None) -> tuple[bool, str]:
     """Kick off the privileged updater for *tag* and return immediately.
 
     The apply script restarts the service (which kills this process), so it is
@@ -108,6 +109,10 @@ def launch_update(tag: str, script: Path) -> tuple[bool, str]:
     restart happens. Returns ``(started, message)``. On a development machine —
     where the script or ``sudo`` is absent — it fails gracefully rather than
     raising, so the UI can show a clear message.
+
+    All output is appended to *log_path* (not discarded), so a failure that
+    happens after this returns — a sudo denial, a failed clone, a failed health
+    check — is still visible afterwards (in the UI's "updatelog" and the file).
     """
     tag = tag.strip()
     if not is_valid_tag(tag):
@@ -116,13 +121,43 @@ def launch_update(tag: str, script: Path) -> tuple[bool, str]:
         return False, "sudo niet beschikbaar (alleen op het geïnstalleerde toestel)."
     if not script.exists():
         return False, f"Updatescript niet gevonden op {script} (alleen op het toestel)."
+
+    out: int | IO[bytes] = subprocess.DEVNULL
+    log_file: IO[bytes] | None = None
+    if log_path is not None:
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_file = open(log_path, "ab")  # noqa: SIM115 - handed to the child process
+            log_file.write(f"\n===== update -> {tag} @ {_now()} =====\n".encode())
+            log_file.flush()
+            out = log_file
+        except OSError as exc:
+            log.warning("Could not open update log %s: %s", log_path, exc)
     try:
         subprocess.Popen(  # noqa: S603 - argv list, tag validated above
             ["sudo", str(script), tag],
             start_new_session=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=out,
+            stderr=subprocess.STDOUT,
         )
     except OSError as exc:
         return False, f"Kon update niet starten: {exc}"
+    finally:
+        if log_file is not None:
+            log_file.close()
     return True, f"Update naar {tag} gestart. Het toestel herstart zo meteen."
+
+
+def _now() -> str:
+    import datetime as _dt
+
+    return _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds")
+
+
+def read_log(log_path: Path, *, max_bytes: int = 8000) -> str:
+    """Return the tail of the update log for display in the UI."""
+    try:
+        data = log_path.read_bytes()
+    except OSError:
+        return ""
+    return data[-max_bytes:].decode("utf-8", "replace")

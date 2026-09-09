@@ -76,8 +76,11 @@
     draait automatisch terug als er iets misloopt.</p>
   <div class="form-actions">
     <button class="btn" type="button" id="btn-check" onclick="checkUpdate()">Zoek naar updates</button>
+    <button class="btn" type="button" onclick="showUpdateLog()">Toon updatelog</button>
   </div>
   <div id="update-result" class="stack" style="margin-top:.8rem"></div>
+  <pre id="update-log" hidden style="max-height:240px;overflow:auto;background:#0f2740;
+       color:#e7eef7;padding:.6rem .8rem;border-radius:8px;font-size:.8rem;margin-top:.6rem"></pre>
 </section>
 
 <section class="card">
@@ -115,6 +118,20 @@ async function confirmRestore(form) {
   return false;
 }
 
+async function showUpdateLog() {
+  const box = document.getElementById('update-log');
+  box.hidden = false;
+  box.textContent = 'Laden…';
+  try {
+    const resp = await fetch('/api/update/log');
+    const d = await resp.json();
+    box.textContent = d.log || '(nog geen updatelog)';
+    box.scrollTop = box.scrollHeight;
+  } catch (e) {
+    box.textContent = 'Kon updatelog niet laden: ' + e;
+  }
+}
+
 async function checkUpdate() {
   const box = document.getElementById('update-result');
   const btn = document.getElementById('btn-check');
@@ -150,7 +167,8 @@ async function applyUpdate(tag) {
     const d = await resp.json();
     if (resp.ok) {
       box.innerHTML = '<div class="banner ok">' + d.detail +
-        ' Vernieuw deze pagina over ±1 minuut.</div>';
+        ' Vernieuw deze pagina over ±1 minuut. Gebeurt er niets? Klik op ' +
+        '“Toon updatelog” om te zien wat er misging.</div>';
     } else {
       box.innerHTML = '<div class="banner err">' + (d.detail || 'Installatie mislukt') + '</div>';
     }

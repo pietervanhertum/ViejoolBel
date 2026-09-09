@@ -73,9 +73,21 @@ def create_app(
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     # --- auth routes -----------------------------------------------------
+    # HTML pages must not be cached, so that after an update the browser re-fetches
+    # the page and picks up the new ?v= on the JS/CSS (otherwise a stale cached
+    # app.js keeps running and UI fixes appear to have no effect).
+    @app.middleware("http")
+    async def _no_cache_html(request: Request, call_next):
+        response = await call_next(request)
+        if response.headers.get("content-type", "").startswith("text/html"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     @app.get("/login", response_class=HTMLResponse)
     def login_form(request: Request) -> HTMLResponse:
-        return templates.TemplateResponse(request, "login.html", {"error": None})
+        return templates.TemplateResponse(
+            request, "login.html", {"error": None, "version": __version__}
+        )
 
     @app.post("/login", response_model=None)
     def login(
@@ -87,7 +99,10 @@ def create_app(
             ok = auth.verify(s, username, password)
         if not ok:
             return templates.TemplateResponse(
-                request, "login.html", {"error": "Invalid credentials"}, status_code=401
+                request,
+                "login.html",
+                {"error": "Invalid credentials", "version": __version__},
+                status_code=401,
             )
         request.session["user"] = username
         return RedirectResponse("/", status_code=303)
@@ -854,8 +869,15 @@ def create_app(
     def update_apply(_: LoggedIn, tag: Annotated[str, Form()]) -> JSONResponse:
         if not updater.is_valid_tag(tag):
             raise HTTPException(400, f"Ongeldige versietag: {tag!r}")
-        started, message = updater.launch_update(tag, settings.update_script)
+        started, message = updater.launch_update(
+            tag, settings.update_script, log_path=settings.update_log
+        )
         return JSONResponse({"ok": started, "detail": message}, status_code=202 if started else 409)
+
+    @app.get("/api/update/log")
+    def update_log(_: LoggedIn) -> JSONResponse:
+        text = updater.read_log(settings.update_log)
+        return JSONResponse({"log": text or "(nog geen updatelog)"})
 
     # --- backup / restore -----------------------------------------------
     @app.get("/api/backup")

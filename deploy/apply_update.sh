@@ -9,7 +9,7 @@
 #
 # Usage:  sudo apply_update.sh <git-tag>
 #
-set -euo pipefail
+set -Eeuo pipefail
 
 TAG="${1:?usage: apply_update.sh <git-tag>}"
 OPT_DIR="/opt/viejoolbel"
@@ -25,7 +25,12 @@ REPO="${VIEJOOLBEL_UPDATE_REPO:-https://github.com/pietervanhertum/ViejoolBel}"
 NEW_DIR="${RELEASES_DIR}/${TAG}"
 PREV_TARGET="$(readlink -f "${OPT_DIR}/current" || true)"
 
-log() { echo "[apply_update] $*"; }
+# Log to stdout (captured to the update log by the caller) AND to journald, so a
+# failure is visible both in the UI's "updatelog" and via `journalctl`.
+log() { echo "[apply_update] $*"; logger -t viejoolbel-update -- "$*" 2>/dev/null || true; }
+
+# On any unexpected error, say where it failed instead of dying silently.
+trap 'log "FAILED at line ${LINENO} (exit $?). Current release left in place."' ERR
 
 # Build the clone URL, injecting a token for a private repo when one is set.
 clone_url() {
@@ -47,10 +52,12 @@ log "Fetching ${TAG} from ${REPO}"
 rm -rf "${NEW_DIR}"
 git clone --depth 1 --branch "${TAG}" "$(clone_url)" "${NEW_DIR}"
 
-log "Building virtualenv"
+log "Building virtualenv (this needs internet for pip)"
 python3 -m venv "${NEW_DIR}/.venv"
-"${NEW_DIR}/.venv/bin/pip" install --upgrade pip wheel >/dev/null
-"${NEW_DIR}/.venv/bin/pip" install "${NEW_DIR}[pi]" >/dev/null 2>&1 || "${NEW_DIR}/.venv/bin/pip" install "${NEW_DIR}" >/dev/null
+"${NEW_DIR}/.venv/bin/pip" install --upgrade pip wheel
+# Try the Pi extra (RPi.GPIO) first; fall back to the base install off-device.
+"${NEW_DIR}/.venv/bin/pip" install "${NEW_DIR}[pi]" \
+  || "${NEW_DIR}/.venv/bin/pip" install "${NEW_DIR}"
 
 log "Running health check on the new release"
 if ! health_check "${NEW_DIR}"; then
