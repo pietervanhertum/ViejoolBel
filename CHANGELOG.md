@@ -3,6 +3,24 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Zero-touch WiFi for devices you ship but don't install yourself.** A new
+  `deploy/preseed_wifi.sh` stores one or more WiFi networks on the device before
+  it leaves your hands, so it joins the site's WiFi automatically on power-up and
+  nobody on-site has to use the setup portal — they just plug it in. Multiple
+  networks can be saved with a priority, so the same card works on your bench and
+  at the school. Documented in `docs/onboarding.md` and the printable Dutch
+  install guide.
+
+### Changed
+- **The installer now enables the on-site onboarding portal automatically.**
+  `deploy/install.sh` installs `hostapd`/`dnsmasq`, masks their packaged system
+  services (so they don't fight NetworkManager), and enables
+  `viejoolbel-ap.service` as an offline fallback. Preseeded WiFi still takes
+  precedence; the portal only appears when no known network is joined.
+
 ## [0.1.3] - 2026-09-09
 
 ### Fixed
