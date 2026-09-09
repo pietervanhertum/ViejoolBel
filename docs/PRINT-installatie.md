@@ -64,12 +64,12 @@ draait ViejoolBel en start het **vanzelf opnieuw op na een stroomonderbreking**.
 ## 5. Eerste keer inloggen
 
 - Open op je telefoon/computer: **`http://viejoolbel.local:8080`**
-- Log in met gebruikersnaam **`admin`** en wachtwoord **`directeur`**.
+- Log in met gebruikersnaam **`admin`** en wachtwoord **`dirkteur`**.
 - **Wijzig het wachtwoord** als je het wil aanpassen (Instellingen →
   "Wachtwoord wijzigen"). Zolang het nog op de standaardwaarde staat, blijft het
   dashboard hiervoor waarschuwen.
 
-> 🔒 Dit wachtwoord (`admin` / `directeur`) staat **enkel** in deze
+> 🔒 Dit wachtwoord (`admin` / `dirkteur`) staat **enkel** in deze
 > installatiegids, niet in de gebruikershandleiding voor het schoolpersoneel.
 > Geef het door aan wie het toestel mag beheren.
 
@@ -208,7 +208,7 @@ dit of een vervangend toestel — geluiden worden op naam teruggekoppeld.
 
 ### Checklist eerste gebruik (in de webinterface)
 Doe dit onmiddellijk na het inloggen, vóór je het toestel oplevert:
-- [ ] Ingelogd op `viejoolbel.local:8080` met `admin` / `directeur`
+- [ ] Ingelogd op `viejoolbel.local:8080` met `admin` / `dirkteur`
 - [ ] Wachtwoord gewijzigd (of bewust op standaard gelaten en doorgegeven)
 - [ ] **Uitvoer** ingesteld (speaker en/of relais; relais uit als enkel audio)
 - [ ] **Standaardbel** aangeduid bij Geluiden
