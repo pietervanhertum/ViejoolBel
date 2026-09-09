@@ -47,3 +47,15 @@ def test_apply_fails_gracefully_without_script(auth_client: TestClient):
 def test_launch_update_validates_tag(tmp_path):
     ok, msg = updater.launch_update("nonsense tag", tmp_path / "apply.sh")
     assert ok is False and "Ongeldige" in msg
+
+
+def test_read_log_returns_tail(tmp_path):
+    log = tmp_path / "update.log"
+    log.write_bytes(b"x" * 100 + b"TAIL")
+    assert updater.read_log(log, max_bytes=8).endswith("TAIL")
+    assert updater.read_log(tmp_path / "missing.log") == ""
+
+
+def test_update_log_endpoint(auth_client: TestClient):
+    body = auth_client.get("/api/update/log").json()
+    assert "log" in body

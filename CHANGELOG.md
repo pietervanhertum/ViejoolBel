@@ -3,6 +3,17 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.3] - 2026-09-09
+
+### Fixed
+- **Software updates ran silently.** The apply script's output was sent to
+  `/dev/null`, so a failed clone, a failed `pip install` (e.g. no internet), or a
+  failed health check produced a "202 Accepted" and then nothing visible. Output
+  is now captured to an update log (`<data_dir>/update.log`) and to journald
+  (`journalctl -t viejoolbel-update`), pip errors are no longer discarded, and the
+  script reports the failing step. A new **"Toon updatelog"** button and
+  `GET /api/update/log` surface it in the web UI.
+
 ## [0.1.2] - 2026-09-07
 
 ### Changed

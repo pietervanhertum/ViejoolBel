@@ -854,8 +854,15 @@ def create_app(
     def update_apply(_: LoggedIn, tag: Annotated[str, Form()]) -> JSONResponse:
         if not updater.is_valid_tag(tag):
             raise HTTPException(400, f"Ongeldige versietag: {tag!r}")
-        started, message = updater.launch_update(tag, settings.update_script)
+        started, message = updater.launch_update(
+            tag, settings.update_script, log_path=settings.update_log
+        )
         return JSONResponse({"ok": started, "detail": message}, status_code=202 if started else 409)
+
+    @app.get("/api/update/log")
+    def update_log(_: LoggedIn) -> JSONResponse:
+        text = updater.read_log(settings.update_log)
+        return JSONResponse({"log": text or "(nog geen updatelog)"})
 
     # --- backup / restore -----------------------------------------------
     @app.get("/api/backup")
