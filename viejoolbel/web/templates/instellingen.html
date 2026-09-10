@@ -119,8 +119,17 @@
 
   <label class="check" style="margin:.3rem 0">
     <input type="checkbox" id="ap-enabled" onchange="setApEnabled(this.checked)">
-    Automatisch starten als er geen gekend netwerk is
+    Automatisch starten bij het opstarten als er geen gekend netwerk is
   </label>
+
+  <div class="field-row" style="align-items:flex-end;margin:.3rem 0">
+    <div style="max-width:230px">
+      <label>Vangnet: open de AP na … minuten zonder netwerk</label>
+      <input type="number" id="ap-fallback" min="0" max="240" step="1" style="max-width:90px">
+    </div>
+    <button class="btn" type="button" onclick="setApFallback()">Opslaan</button>
+    <span class="hint" style="margin:0">0 = uit</span>
+  </div>
 
   <p class="hint">Verbind met <strong>ViejoolBel-Setup</strong>
     (wachtwoord <code>belsetup2025</code>) → <code>http://192.168.4.1:8080</code>.</p>
@@ -403,11 +412,28 @@ async function loadApStatus() {
       return;
     }
     cb.checked = !!d.enabled;
+    const fb = document.getElementById('ap-fallback');
+    if (fb && document.activeElement !== fb) fb.value = (d.fallback_minutes ?? 15);
     el.innerHTML = 'Automatisch starten: <strong>' + (d.enabled ? 'aan' : 'uit') + '</strong>' +
       ' · nu actief: <strong>' + (d.active || d.hostapd_running ? 'ja' : 'nee') + '</strong>' +
       (d.installed ? '' : ' · <span class="muted">(nog niet geïnstalleerd — wordt bij inschakelen gezet)</span>');
   } catch (e) {
     el.textContent = 'Kon AP-status niet laden.';
+  }
+}
+
+async function setApFallback() {
+  const mins = document.getElementById('ap-fallback').value;
+  const body = new FormData(); body.append('minutes', mins);
+  const box = document.getElementById('ap-result');
+  try {
+    const resp = await fetch('/api/ap/fallback', { method: 'POST', body });
+    const d = await resp.json();
+    if (!resp.ok) { box.innerHTML = '<div class="banner err">' + escapeHtml(d.detail || 'Mislukt') + '</div>'; return; }
+    box.innerHTML = '<div class="banner ok">Vangnet: ' +
+      (d.fallback_minutes > 0 ? ('na ' + d.fallback_minutes + ' min zonder netwerk') : 'uit') + '.</div>';
+  } catch (e) {
+    box.innerHTML = '<div class="banner err">Netwerkfout: ' + escapeHtml(String(e)) + '</div>';
   }
 }
 

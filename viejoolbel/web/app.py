@@ -949,7 +949,22 @@ def create_app(
     # --- onboarding access point ----------------------------------------
     @app.get("/api/ap/status")
     def ap_status(_: LoggedIn) -> JSONResponse:
-        return JSONResponse(ap.status(settings.ap_control_script))
+        data = ap.status(settings.ap_control_script)
+        with session_scope() as s:
+            raw = get_setting(s, "ap_fallback_minutes", str(settings.ap_fallback_minutes))
+        try:
+            data["fallback_minutes"] = int(raw)
+        except (TypeError, ValueError):
+            data["fallback_minutes"] = settings.ap_fallback_minutes
+        return JSONResponse(data)
+
+    @app.post("/api/ap/fallback")
+    def ap_set_fallback(_: LoggedIn, minutes: Annotated[int, Form()]) -> JSONResponse:
+        if not 0 <= minutes <= 240:
+            raise HTTPException(400, "minuten moet tussen 0 en 240 liggen")
+        with session_scope() as s:
+            set_setting(s, "ap_fallback_minutes", str(minutes))
+        return JSONResponse({"ok": True, "fallback_minutes": minutes})
 
     @app.post("/api/ap/enabled")
     def ap_set_enabled(_: LoggedIn, enabled: Annotated[bool, Form()]) -> JSONResponse:

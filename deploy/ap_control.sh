@@ -44,6 +44,11 @@ case "${cmd}" in
     systemctl disable "${UNIT}" >/dev/null 2>&1 || true
     echo "disabled"
     ;;
+  raise)
+    # Bring the AP up now with no reboot (used by the offline safety-net).
+    setsid "${AP_SH}" now >/dev/null 2>&1 &
+    echo "ap-raised"
+    ;;
   start-test)
     mins="${2:-5}"
     [[ "${mins}" =~ ^[0-9]+$ ]] && ((mins >= 1 && mins <= 30)) || mins=5

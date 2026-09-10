@@ -3,6 +3,18 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.9] - 2026-09-10
+
+### Added
+- **Offline safety net.** If the device has no network for a configurable grace
+  period (default 15 minutes, 0 disables), the health monitor opens the
+  onboarding AP (`ViejoolBel-Setup`) so the device can be recovered on-site even
+  if its WiFi disappears entirely. A short outage (router reboot, brief hiccup)
+  resets the timer, so it never triggers on a blip; once the AP is up the monitor
+  stands down (the bell keeps ringing throughout — it needs no network). The grace
+  period is set in Instellingen → AP. Backed by `POST /api/ap/fallback` and a new
+  `ap_control.sh raise` command.
+
 ## [0.2.8] - 2026-09-10
 
 ### Fixed

@@ -76,6 +76,43 @@ def set_enabled(script: Path, on: bool) -> tuple[bool, str]:
                   if on else "Automatische AP is uitgeschakeld.")
 
 
+def network_online() -> bool:
+    """True when the device is on a real network (has a default route).
+
+    In onboarding-AP mode wlan0 has 192.168.4.1 but no default route, so this
+    correctly reports offline then — which is what the fallback watchdog wants."""
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["ip", "route"], capture_output=True, text=True, timeout=5.0
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0 and any(
+        line.startswith("default") for line in proc.stdout.splitlines()
+    )
+
+
+def ap_is_active() -> bool:
+    """True when the onboarding AP (hostapd) is currently running."""
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["pgrep", "-x", "hostapd"], capture_output=True, text=True, timeout=5.0
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0
+
+
+def raise_ap(script: Path) -> tuple[bool, str]:
+    """Bring the onboarding AP up now (no reboot) — used by the fallback watchdog."""
+    if not available(script):
+        return False, "AP-beheer is niet beschikbaar."
+    proc = _run(script, "raise")
+    if proc is None or proc.returncode != 0:
+        return False, "AP openen mislukt."
+    return True, "AP geopend."
+
+
 def start_test(script: Path, minutes: int = 5) -> tuple[bool, str]:
     """Bring the AP up now for a test; the device reboots after *minutes*."""
     if not available(script):

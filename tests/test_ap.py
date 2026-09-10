@@ -3,14 +3,90 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from viejoolbel import ap
+from viejoolbel.config import Settings
+from viejoolbel.db import session_scope, set_setting
+from viejoolbel.monitor import HealthMonitor
 
 _SCRIPT = Path("/opt/viejoolbel/current/deploy/ap_control.sh")
+
+
+def _route_run(stdout: str):
+    def run(*a, **k):
+        return subprocess.CompletedProcess(a, 0, stdout=stdout, stderr="")
+    return run
+
+
+def test_network_online_reads_default_route(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(ap.subprocess, "run", _route_run("default via 192.168.1.1\n"))
+    assert ap.network_online() is True
+    monkeypatch.setattr(ap.subprocess, "run", _route_run("192.168.4.0/24 dev wlan0\n"))
+    assert ap.network_online() is False
+
+
+def _monitor(settings: Settings) -> HealthMonitor:
+    return HealthMonitor(settings, scheduler_is_alive=lambda: True)
+
+
+def test_fallback_opens_ap_after_grace(
+    initialized_db, settings: Settings, monkeypatch: pytest.MonkeyPatch
+):
+    m = _monitor(settings)
+    monkeypatch.setattr(ap, "network_online", lambda: False)
+    monkeypatch.setattr(ap, "ap_is_active", lambda: False)
+    raised = {"n": 0}
+
+    def fake_raise(_s):
+        raised["n"] += 1
+        return True, "ok"
+
+    monkeypatch.setattr(ap, "raise_ap", fake_raise)
+
+    m._check_network_fallback()          # arms the timer, does not act
+    assert raised["n"] == 0
+    m._offline_since = time.monotonic() - (settings.ap_fallback_minutes * 60 + 1)
+    m._check_network_fallback()          # grace elapsed -> opens AP
+    assert raised["n"] == 1
+    monkeypatch.setattr(ap, "ap_is_active", lambda: True)
+    m._check_network_fallback()          # AP now up -> stands down (no loop)
+    assert raised["n"] == 1
+
+
+def test_fallback_resets_when_back_online(
+    initialized_db, settings: Settings, monkeypatch: pytest.MonkeyPatch
+):
+    def _no_raise(_s):
+        raise AssertionError("should not open the AP")
+
+    m = _monitor(settings)
+    m._offline_since = time.monotonic() - 9999
+    monkeypatch.setattr(ap, "network_online", lambda: True)
+    monkeypatch.setattr(ap, "raise_ap", _no_raise)
+    m._check_network_fallback()
+    assert m._offline_since is None
+
+
+def test_fallback_disabled_when_zero(
+    initialized_db, settings: Settings, monkeypatch: pytest.MonkeyPatch
+):
+    def _no_raise(_s):
+        raise AssertionError("fallback disabled — must not open the AP")
+
+    with session_scope() as s:
+        set_setting(s, "ap_fallback_minutes", "0")
+    m = _monitor(settings)
+    m._offline_since = time.monotonic() - 9999
+    monkeypatch.setattr(ap, "network_online", lambda: False)
+    monkeypatch.setattr(ap, "ap_is_active", lambda: False)
+    monkeypatch.setattr(ap, "raise_ap", _no_raise)
+    m._check_network_fallback()  # must not raise the AP
+    assert m._offline_since is None
 
 
 def test_status_unsupported(monkeypatch: pytest.MonkeyPatch):
