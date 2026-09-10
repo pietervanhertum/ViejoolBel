@@ -40,6 +40,41 @@
 </section>
 
 <section class="card">
+  <h2>WiFi</h2>
+  <p class="sub">Kies het WiFi-netwerk van de school en meld je aan met het
+    wachtwoord. Handig bij de eerste installatie of als het netwerk verandert.</p>
+  <p class="muted" id="wifi-current">Huidig netwerk: <span>laden…</span></p>
+
+  <form method="post" action="/api/wifi/connect" class="stack" onsubmit="return connectWifi(this)">
+    <div class="field-row">
+      <div style="flex:1 1 auto">
+        <label>Netwerk</label>
+        <select id="wifi-select" onchange="pickNetwork()">
+          <option value="">— Kies een netwerk of vul hieronder in —</option>
+        </select>
+      </div>
+      <button class="btn" type="button" id="wifi-scan-btn" onclick="scanWifi()">Zoek netwerken</button>
+    </div>
+    <div>
+      <label>Netwerknaam (SSID)</label>
+      <input name="ssid" id="wifi-ssid" placeholder="naam van het WiFi-netwerk" required autocomplete="off">
+      <p class="hint">Vul zelf in voor een verborgen netwerk dat niet in de lijst staat.</p>
+    </div>
+    <div>
+      <label>Wachtwoord</label>
+      <input type="password" name="password" id="wifi-pass" placeholder="WiFi-wachtwoord" autocomplete="off">
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Verbind</button>
+    </div>
+  </form>
+  <p class="hint">Let op: bij het overschakelen naar een ander netwerk kan deze
+    pagina korte tijd onbereikbaar worden. Daarna is het toestel bereikbaar op
+    <strong>viejoolbel.local</strong>.</p>
+  <div id="wifi-result" class="stack" style="margin-top:.6rem"></div>
+</section>
+
+<section class="card">
   <h2>Meldingen bij problemen <span class="badge badge-muted">geavanceerd</span></h2>
   <p class="sub">Optioneel, meestal door de beheerder ingesteld. Een webhook
     (bv. ntfy.sh, Discord, Slack) krijgt een bericht zodra er iets misgaat. De
@@ -105,6 +140,103 @@
 
 {% block scripts %}
 <script>
+let wifiNetworks = [];
+
+async function loadWifiStatus() {
+  const el = document.getElementById('wifi-current');
+  try {
+    const d = await (await fetch('/api/wifi/status')).json();
+    if (!d.supported) {
+      el.innerHTML = 'WiFi-beheer is op dit toestel niet beschikbaar.';
+      const btn = document.getElementById('wifi-scan-btn');
+      if (btn) btn.disabled = true;
+      return;
+    }
+    el.innerHTML = d.current_ssid
+      ? 'Huidig netwerk: <strong>' + escapeHtml(d.current_ssid) + '</strong>'
+      : 'Huidig netwerk: <span class="muted">niet verbonden</span>';
+  } catch (e) {
+    el.textContent = 'Kon WiFi-status niet laden.';
+  }
+}
+
+async function scanWifi() {
+  const btn = document.getElementById('wifi-scan-btn');
+  const sel = document.getElementById('wifi-select');
+  btn.disabled = true;
+  const old = btn.textContent;
+  btn.textContent = 'Zoeken…';
+  try {
+    const d = await (await fetch('/api/wifi/scan')).json();
+    wifiNetworks = d.networks || [];
+    sel.length = 1; // keep the placeholder
+    for (const n of wifiNetworks) {
+      const opt = document.createElement('option');
+      opt.value = n.ssid;
+      const bars = signalBars(n.signal);
+      opt.textContent = n.ssid + (n.secure ? ' 🔒' : '') + '  ' + bars + (n.active ? '  (verbonden)' : '');
+      sel.appendChild(opt);
+    }
+    if (!wifiNetworks.length) {
+      document.getElementById('wifi-result').innerHTML =
+        '<div class="banner warn">Geen netwerken gevonden. Probeer opnieuw of vul de netwerknaam zelf in.</div>';
+    } else {
+      document.getElementById('wifi-result').innerHTML = '';
+    }
+  } catch (e) {
+    document.getElementById('wifi-result').innerHTML =
+      '<div class="banner err">Zoeken mislukt: ' + e + '</div>';
+  }
+  btn.disabled = false;
+  btn.textContent = old;
+}
+
+function pickNetwork() {
+  const ssid = document.getElementById('wifi-select').value;
+  if (!ssid) return;
+  document.getElementById('wifi-ssid').value = ssid;
+  const net = wifiNetworks.find(n => n.ssid === ssid);
+  const pass = document.getElementById('wifi-pass');
+  // An open network needs no password; focus the password field for a secure one.
+  if (net && !net.secure) { pass.value = ''; pass.disabled = true; }
+  else { pass.disabled = false; pass.focus(); }
+}
+
+async function connectWifi(form) {
+  const ssid = document.getElementById('wifi-ssid').value.trim();
+  if (!ssid) { alert('Geef een netwerknaam (SSID) op.'); return false; }
+  if (!confirm('Verbinden met "' + ssid + '"? Deze pagina kan even onbereikbaar worden.')) return false;
+  const box = document.getElementById('wifi-result');
+  const btn = form.querySelector('button[type=submit]');
+  if (btn) btn.disabled = true;
+  box.innerHTML = '<p class="muted">Bezig met verbinden…</p>';
+  try {
+    const resp = await fetch('/api/wifi/connect', { method: 'POST', body: buildBody(form) });
+    const d = await resp.json();
+    box.innerHTML = '<div class="banner ' + (resp.ok ? 'ok' : 'err') + '">' +
+      escapeHtml(d.detail || (resp.ok ? 'Verbonden.' : 'Verbinden mislukt.')) + '</div>';
+    if (resp.ok) loadWifiStatus();
+  } catch (e) {
+    // A dropped connection here often means the switch is underway — say so.
+    box.innerHTML = '<div class="banner warn">Verbinding met deze pagina verbroken — ' +
+      'het toestel schakelt waarschijnlijk over. Zoek het straks op viejoolbel.local.</div>';
+  }
+  if (btn) btn.disabled = false;
+  return false;
+}
+
+function signalBars(signal) {
+  const n = Math.max(0, Math.min(4, Math.round((signal || 0) / 25)));
+  return '▂▄▆█'.slice(0, n) || '·';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+window.addEventListener('DOMContentLoaded', () => { loadWifiStatus(); scanWifi(); });
+
 async function confirmRestore(form) {
   if (!confirm('Weet je het zeker? Dit vervangt je huidige roosters, weekindeling en kalender.'))
     return false;
