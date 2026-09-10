@@ -52,6 +52,24 @@ def test_scan_empty_when_unsupported(monkeypatch: pytest.MonkeyPatch):
     assert wifi.scan() == []
 
 
+def test_scan_falls_back_to_cache_when_rescan_refused(monkeypatch: pytest.MonkeyPatch):
+    # NetworkManager rate-limits rescans; when "--rescan yes" is refused, scan()
+    # must fall back to the cached list instead of returning nothing.
+    monkeypatch.setattr(wifi, "available", lambda: True)
+    calls: list[bool] = []
+
+    def run(cmd, *args, **kwargs):
+        rescan = "--rescan" in cmd
+        calls.append(rescan)
+        code = 1 if rescan else 0  # reject the rescan, allow the cached read
+        return subprocess.CompletedProcess(cmd, code, stdout=_SCAN_OUTPUT, stderr="busy")
+
+    monkeypatch.setattr(wifi.subprocess, "run", run)
+    nets = wifi.scan()
+    assert calls == [True, False]  # tried rescan first, then cached
+    assert [n.ssid for n in nets] == ["SchoolWiFi", "Buren:Gastnet", "OpenNet"]
+
+
 def test_current_ssid_returns_active(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(wifi, "available", lambda: True)
     monkeypatch.setattr(wifi.subprocess, "run", _fake_run(_SCAN_OUTPUT))

@@ -25,7 +25,9 @@ log = logging.getLogger(__name__)
 # Joining a network can involve a DHCP round-trip; cap it so the request cannot
 # hang forever if the credentials are wrong or the AP is out of range.
 _CONNECT_TIMEOUT = 45.0
-_SCAN_TIMEOUT = 15.0
+# Forcing a fresh scan (--rescan yes) blocks until NetworkManager finishes
+# scanning, which can take a while on a busy radio; give it room.
+_SCAN_TIMEOUT = 25.0
 
 
 @dataclass(frozen=True)
@@ -71,26 +73,41 @@ def _split_terse(line: str) -> list[str]:
     return fields
 
 
+def _wifi_list(*, rescan: bool) -> subprocess.CompletedProcess[str] | None:
+    """Run ``nmcli device wifi list``. With *rescan* it forces a fresh scan and
+    waits for it (``--rescan yes``); otherwise it returns NetworkManager's cached
+    result. Returns None on an error/timeout so the caller can fall back."""
+    cmd = ["nmcli", "-t", "-f", "ACTIVE,SIGNAL,SECURITY,SSID", "device", "wifi", "list"]
+    if rescan:
+        cmd += ["--rescan", "yes"]
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list, no shell
+            cmd, capture_output=True, text=True, timeout=_SCAN_TIMEOUT
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("WiFi scan failed: %s", exc)
+        return None
+    if proc.returncode != 0:
+        log.warning("WiFi scan returned %s: %s", proc.returncode, proc.stderr.strip())
+        return None
+    return proc
+
+
 def scan() -> list[Network]:
     """Return nearby WiFi networks, strongest first, deduplicated by SSID.
+
+    Forces a fresh scan so networks the device is not connected to also show up;
+    without ``--rescan yes`` nmcli returns a cached list that often contains only
+    the currently-associated AP. Falls back to the cached list if NetworkManager
+    refuses the rescan (it rate-limits how often one can be requested).
 
     Returns an empty list when WiFi cannot be managed here or the scan fails,
     so callers never have to handle an exception.
     """
     if not available():
         return []
-    try:
-        proc = subprocess.run(  # noqa: S603 - argv list, no shell
-            ["nmcli", "-t", "-f", "ACTIVE,SIGNAL,SECURITY,SSID", "device", "wifi", "list"],
-            capture_output=True,
-            text=True,
-            timeout=_SCAN_TIMEOUT,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        log.warning("WiFi scan failed: %s", exc)
-        return []
-    if proc.returncode != 0:
-        log.warning("WiFi scan returned %s: %s", proc.returncode, proc.stderr.strip())
+    proc = _wifi_list(rescan=True) or _wifi_list(rescan=False)
+    if proc is None:
         return []
 
     best: dict[str, Network] = {}
