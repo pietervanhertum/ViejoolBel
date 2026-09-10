@@ -70,7 +70,7 @@
   <div id="wifi-list" class="wifi-list"><p class="muted">Laden…</p></div>
 
   <button class="btn btn-link" type="button" id="wifi-hidden-toggle"
-          onclick="toggleHidden()" style="margin-top:.5rem">+ Verborgen netwerk…</button>
+          onclick="toggleHidden()" style="margin-top:.5rem">+ Netwerk handmatig invullen (of verborgen netwerk)…</button>
   <form id="wifi-hidden-form" hidden class="stack" style="margin-top:.5rem"
         onsubmit="return connectHidden(this)">
     <div>
@@ -261,8 +261,14 @@ function renderNetworkList() {
     return;
   }
   if (!wifiNetworks.length) {
-    list.innerHTML = '<p class="muted">Geen netwerken gevonden. Klik op “Zoek netwerken”, ' +
-      'of voeg een verborgen netwerk toe.</p>';
+    list.innerHTML = '<div class="banner warn">Geen netwerken gevonden. ' +
+      'Ben je verbonden via het instelnetwerk <strong>ViejoolBel-Setup</strong>? ' +
+      'Dan kan de radio niet scannen (die zendt het instelnetwerk uit). ' +
+      '<strong>Typ de schoolwifi hieronder zelf in</strong> en verbind — het toestel ' +
+      'schakelt dan over.</div>';
+    // Make manual entry the obvious next step.
+    const f = document.getElementById('wifi-hidden-form');
+    if (f) { f.hidden = false; const i = f.querySelector('input[name=ssid]'); if (i) i.focus(); }
     return;
   }
   list.innerHTML = wifiNetworks.map((n, i) => {

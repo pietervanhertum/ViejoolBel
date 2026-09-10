@@ -3,6 +3,16 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.10] - 2026-09-10
+
+### Changed
+- **Setting WiFi from the onboarding AP is now obvious.** In AP mode the single
+  radio is busy broadcasting `ViejoolBel-Setup`, so it cannot scan and the network
+  list is empty — which looked broken. The WiFi picker now explains this when no
+  networks are found and automatically opens the manual entry so you just type the
+  school's SSID + password and connect; the device then switches over. The manual
+  option is relabelled "Netwerk handmatig invullen (of verborgen netwerk)".
+
 ## [0.2.9] - 2026-09-10
 
 ### Added
