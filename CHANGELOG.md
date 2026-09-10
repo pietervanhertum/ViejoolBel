@@ -3,6 +3,24 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.7] - 2026-09-10
+
+### Added
+- **Onboarding access point is now manageable from Instellingen.** A new AP
+  section shows whether the `ViejoolBel-Setup` fallback starts automatically when
+  no known WiFi is found, with a toggle to enable/disable it (it installs the
+  service on first enable), the SSID/password to connect to, and a **"Test AP nu"**
+  button. The test brings the AP up immediately and **schedules a guaranteed
+  reboot after 5 minutes first**, so testing the AP can never strand the device.
+  Backed by `GET /api/ap/status`, `POST /api/ap/enabled`, `POST /api/ap/test`
+  and a scoped `ap_control.sh` sudoers rule.
+
+### Changed
+- **The onboarding AP now releases wlan0 from NetworkManager** before bringing
+  hostapd/dnsmasq up (and `set_wifi.sh` hands it back), so the access point works
+  on NetworkManager-managed devices instead of fighting it. `viejoolbel-ap.sh`
+  also accepts `now` to force the AP up for a test.
+
 ## [0.2.6] - 2026-09-10
 
 ### Added

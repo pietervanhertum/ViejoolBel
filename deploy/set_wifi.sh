@@ -27,6 +27,9 @@ if ! command -v nmcli >/dev/null 2>&1; then
   exit 0
 fi
 
+# If the onboarding AP left wlan0 unmanaged, hand it back to NetworkManager.
+nmcli device set wlan0 managed yes >/dev/null 2>&1 || true
+
 # Remember the WiFi connection currently in use, so we can roll back to it.
 PREV="$(nmcli -t -f NAME,TYPE connection show --active 2>/dev/null \
         | awk -F: '$2=="802-11-wireless"{print $1; exit}')"

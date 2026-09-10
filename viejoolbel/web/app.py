@@ -19,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import auth, updater, wifi
+from .. import ap, auth, updater, wifi
 from .. import backup as backup_mod
 from ..bell import BellController
 from ..config import Settings
@@ -945,6 +945,21 @@ def create_app(
     @app.get("/api/wifi/diagnostics")
     def wifi_diagnostics(_: LoggedIn) -> JSONResponse:
         return JSONResponse({"report": wifi.diagnostics()})
+
+    # --- onboarding access point ----------------------------------------
+    @app.get("/api/ap/status")
+    def ap_status(_: LoggedIn) -> JSONResponse:
+        return JSONResponse(ap.status(settings.ap_control_script))
+
+    @app.post("/api/ap/enabled")
+    def ap_set_enabled(_: LoggedIn, enabled: Annotated[bool, Form()]) -> JSONResponse:
+        ok, detail = ap.set_enabled(settings.ap_control_script, enabled)
+        return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
+
+    @app.post("/api/ap/test")
+    def ap_test(_: LoggedIn, minutes: Annotated[int, Form()] = 5) -> JSONResponse:
+        ok, detail = ap.start_test(settings.ap_control_script, minutes)
+        return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
 
     # --- software update -------------------------------------------------
     @app.get("/api/update/check")

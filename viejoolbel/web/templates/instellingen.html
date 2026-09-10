@@ -111,6 +111,33 @@
 </section>
 
 <section class="card">
+  <h2>Onboarding-toegangspunt (AP)</h2>
+  <p class="sub">Als het toestel geen gekend WiFi-netwerk vindt, kan het zélf een
+    tijdelijk WiFi-netwerk openen zodat je de schoolwifi kunt instellen — handig
+    bij een eerste installatie zonder internet.</p>
+  <p class="muted" id="ap-status">Status laden…</p>
+
+  <label class="check" style="margin:.3rem 0">
+    <input type="checkbox" id="ap-enabled" onchange="setApEnabled(this.checked)">
+    Automatisch starten als er geen gekend netwerk is
+  </label>
+
+  <p class="hint">Verbind met <strong>ViejoolBel-Setup</strong>
+    (wachtwoord <code>belsetup2025</code>) → <code>http://192.168.4.1:8080</code>.</p>
+
+  <div class="banner warn" style="margin:.6rem 0">
+    <strong>Test:</strong> tijdens een test schakelt het toestel over naar AP-modus
+    en <em>verbreekt deze pagina de verbinding</em>. Het toestel <strong>herstart
+    automatisch na 5 minuten</strong>, dus je raakt het nooit kwijt. Verbind binnen
+    die tijd met <strong>ViejoolBel-Setup</strong> om te testen.
+  </div>
+  <div class="form-actions">
+    <button class="btn" type="button" onclick="testAp()">Test AP nu (5 min)</button>
+  </div>
+  <div id="ap-result" class="stack" style="margin-top:.6rem"></div>
+</section>
+
+<section class="card">
   <h2>Meldingen bij problemen <span class="badge badge-muted">geavanceerd</span></h2>
   <p class="sub">Optioneel, meestal door de beheerder ingesteld. Een webhook
     (bv. ntfy.sh, Discord, Slack) krijgt een bericht zodra er iets misgaat. De
@@ -365,12 +392,65 @@ async function copyDiagnostics() {
   catch (e) { alert('Kon niet kopiëren; selecteer de tekst handmatig.'); }
 }
 
+async function loadApStatus() {
+  const el = document.getElementById('ap-status');
+  const cb = document.getElementById('ap-enabled');
+  try {
+    const d = await (await fetch('/api/ap/status')).json();
+    if (!d.supported) {
+      el.textContent = 'AP-beheer is op dit toestel niet beschikbaar.';
+      cb.disabled = true;
+      return;
+    }
+    cb.checked = !!d.enabled;
+    el.innerHTML = 'Automatisch starten: <strong>' + (d.enabled ? 'aan' : 'uit') + '</strong>' +
+      ' · nu actief: <strong>' + (d.active || d.hostapd_running ? 'ja' : 'nee') + '</strong>' +
+      (d.installed ? '' : ' · <span class="muted">(nog niet geïnstalleerd — wordt bij inschakelen gezet)</span>');
+  } catch (e) {
+    el.textContent = 'Kon AP-status niet laden.';
+  }
+}
+
+async function setApEnabled(on) {
+  const body = new FormData(); body.append('enabled', on ? 'true' : 'false');
+  const box = document.getElementById('ap-result');
+  try {
+    const resp = await fetch('/api/ap/enabled', { method: 'POST', body });
+    const d = await resp.json();
+    box.innerHTML = '<div class="banner ' + (resp.ok ? 'ok' : 'err') + '">' +
+      escapeHtml(d.detail || (resp.ok ? 'Opgeslagen.' : 'Mislukt.')) + '</div>';
+    loadApStatus();
+  } catch (e) {
+    box.innerHTML = '<div class="banner err">Netwerkfout: ' + escapeHtml(String(e)) + '</div>';
+  }
+}
+
+async function testAp() {
+  if (!confirm('AP-test starten? Deze pagina verliest de verbinding en het toestel ' +
+    'herstart automatisch na 5 minuten. Verbind je telefoon met ViejoolBel-Setup om te testen.')) return;
+  const box = document.getElementById('ap-result');
+  box.innerHTML = '<p class="muted">AP-test starten…</p>';
+  const body = new FormData(); body.append('minutes', '5');
+  try {
+    const resp = await fetch('/api/ap/test', { method: 'POST', body });
+    const d = await resp.json();
+    box.innerHTML = '<div class="banner ' + (resp.ok ? 'ok' : 'err') + '">' +
+      escapeHtml(d.detail || (resp.ok ? 'Gestart.' : 'Mislukt.')) + '</div>';
+  } catch (e) {
+    box.innerHTML = '<div class="banner warn">Verbinding met deze pagina verbroken — ' +
+      'de AP-test is waarschijnlijk gestart. Verbind met ViejoolBel-Setup; het toestel ' +
+      'herstart vanzelf na 5 minuten.</div>';
+  }
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-window.addEventListener('DOMContentLoaded', () => { loadWifiStatus(); scanWifi(); loadSavedNetworks(); });
+window.addEventListener('DOMContentLoaded', () => {
+  loadWifiStatus(); scanWifi(); loadSavedNetworks(); loadApStatus();
+});
 
 async function confirmRestore(form) {
   if (!confirm('Weet je het zeker? Dit vervangt je huidige roosters, weekindeling en kalender.'))

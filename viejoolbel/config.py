@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # Privileged helper that joins a WiFi network + tears down the onboarding AP
     # (see wifi.py). Invoked via the scoped sudoers rule.
     wifi_script: Path = Field(default=Path("/opt/viejoolbel/current/deploy/set_wifi.sh"))
+    # Privileged helper that manages the onboarding access point (see ap.py).
+    ap_control_script: Path = Field(
+        default=Path("/opt/viejoolbel/current/deploy/ap_control.sh")
+    )
     # Optional GitHub token (read-only) so the update check + clone work on a
     # PRIVATE repository. Stored in /etc/viejoolbel/viejoolbel.env. See
     # docs/github-auth.md.
