@@ -25,7 +25,9 @@ log = logging.getLogger(__name__)
 # Joining a network can involve a DHCP round-trip; cap it so the request cannot
 # hang forever if the credentials are wrong or the AP is out of range.
 _CONNECT_TIMEOUT = 45.0
-_SCAN_TIMEOUT = 15.0
+# Forcing a fresh scan (--rescan yes) blocks until NetworkManager finishes
+# scanning, which can take a while on a busy radio; give it room.
+_SCAN_TIMEOUT = 25.0
 
 
 @dataclass(frozen=True)
@@ -71,26 +73,41 @@ def _split_terse(line: str) -> list[str]:
     return fields
 
 
+def _wifi_list(*, rescan: bool) -> subprocess.CompletedProcess[str] | None:
+    """Run ``nmcli device wifi list``. With *rescan* it forces a fresh scan and
+    waits for it (``--rescan yes``); otherwise it returns NetworkManager's cached
+    result. Returns None on an error/timeout so the caller can fall back."""
+    cmd = ["nmcli", "-t", "-f", "ACTIVE,SIGNAL,SECURITY,SSID", "device", "wifi", "list"]
+    if rescan:
+        cmd += ["--rescan", "yes"]
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list, no shell
+            cmd, capture_output=True, text=True, timeout=_SCAN_TIMEOUT
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("WiFi scan failed: %s", exc)
+        return None
+    if proc.returncode != 0:
+        log.warning("WiFi scan returned %s: %s", proc.returncode, proc.stderr.strip())
+        return None
+    return proc
+
+
 def scan() -> list[Network]:
     """Return nearby WiFi networks, strongest first, deduplicated by SSID.
+
+    Forces a fresh scan so networks the device is not connected to also show up;
+    without ``--rescan yes`` nmcli returns a cached list that often contains only
+    the currently-associated AP. Falls back to the cached list if NetworkManager
+    refuses the rescan (it rate-limits how often one can be requested).
 
     Returns an empty list when WiFi cannot be managed here or the scan fails,
     so callers never have to handle an exception.
     """
     if not available():
         return []
-    try:
-        proc = subprocess.run(  # noqa: S603 - argv list, no shell
-            ["nmcli", "-t", "-f", "ACTIVE,SIGNAL,SECURITY,SSID", "device", "wifi", "list"],
-            capture_output=True,
-            text=True,
-            timeout=_SCAN_TIMEOUT,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        log.warning("WiFi scan failed: %s", exc)
-        return []
-    if proc.returncode != 0:
-        log.warning("WiFi scan returned %s: %s", proc.returncode, proc.stderr.strip())
+    proc = _wifi_list(rescan=True) or _wifi_list(rescan=False)
+    if proc is None:
         return []
 
     best: dict[str, Network] = {}
@@ -131,6 +148,98 @@ def current_ssid() -> str | None:
         if net.active:
             return net.ssid
     return None
+
+
+@dataclass(frozen=True)
+class SavedNetwork:
+    name: str  # NetworkManager connection id — the handle used to forget it
+    ssid: str  # the WiFi SSID (for display)
+    active: bool  # currently in use
+
+    def as_dict(self) -> dict[str, object]:
+        return {"name": self.name, "ssid": self.ssid, "active": self.active}
+
+
+def _connection_ssid(ident: str) -> str:
+    """Look up the SSID stored in a saved connection profile (empty if none)."""
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["nmcli", "-t", "-g", "802-11-wireless.ssid", "connection", "show", ident],
+            capture_output=True,
+            text=True,
+            timeout=_SCAN_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def saved_networks() -> list[SavedNetwork]:
+    """Return the WiFi networks stored on the device (NetworkManager profiles).
+
+    These are the networks the device will join on its own — added here by
+    connecting, or ahead of time by ``preseed_wifi.sh``. Returns an empty list
+    when WiFi cannot be managed here or the query fails.
+    """
+    if not available():
+        return []
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["nmcli", "-t", "-f", "NAME,UUID,TYPE,DEVICE", "connection", "show"],
+            capture_output=True,
+            text=True,
+            timeout=_SCAN_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("Listing saved networks failed: %s", exc)
+        return []
+    if proc.returncode != 0:
+        log.warning("Listing saved networks returned %s: %s", proc.returncode, proc.stderr.strip())
+        return []
+
+    out: list[SavedNetwork] = []
+    for line in proc.stdout.splitlines():
+        if not line.strip():
+            continue
+        name, uuid, conn_type, device = (_split_terse(line) + ["", "", "", ""])[:4]
+        if conn_type.strip() != "802-11-wireless":
+            continue
+        ssid = _connection_ssid(uuid) or name.removeprefix("viejoolbel-")
+        out.append(
+            SavedNetwork(
+                name=name,
+                ssid=ssid,
+                active=device.strip() not in ("", "--"),
+            )
+        )
+    return sorted(out, key=lambda n: (not n.active, n.ssid.lower()))
+
+
+def forget(name: str, script: Path) -> tuple[bool, str]:
+    """Delete a saved network profile by its connection *name*.
+
+    Fails gracefully (never raises) when run off a real device.
+    """
+    name = name.strip()
+    if not name:
+        return False, "Geen netwerk opgegeven."
+    if shutil.which("sudo") is None:
+        return False, "sudo niet beschikbaar (alleen op het geïnstalleerde toestel)."
+    if not script.exists():
+        return False, f"WiFi-script niet gevonden op {script} (alleen op het toestel)."
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list (no shell); arg validated
+            ["sudo", str(script), name],
+            capture_output=True,
+            text=True,
+            timeout=_CONNECT_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"Kon netwerk niet verwijderen: {exc}"
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout).strip() or f"foutcode {proc.returncode}"
+        return False, f"Verwijderen van '{name}' mislukt: {detail}"
+    return True, f"Netwerk '{name}' verwijderd."
 
 
 def connect(ssid: str, password: str, script: Path) -> tuple[bool, str]:

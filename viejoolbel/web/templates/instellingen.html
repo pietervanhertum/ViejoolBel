@@ -72,6 +72,12 @@
     pagina korte tijd onbereikbaar worden. Daarna is het toestel bereikbaar op
     <strong>viejoolbel.local</strong>.</p>
   <div id="wifi-result" class="stack" style="margin-top:.6rem"></div>
+
+  <h3 style="margin:1rem 0 .3rem">Opgeslagen netwerken</h3>
+  <p class="sub">Netwerken die het toestel onthoudt en vanzelf gebruikt zodra ze in
+    bereik zijn (toegevoegd door te verbinden, of vooraf met <code>preseed_wifi.sh</code>).
+    Verwijder er een die niet meer nodig is.</p>
+  <div id="wifi-saved"><p class="muted">Laden…</p></div>
 </section>
 
 <section class="card">
@@ -215,7 +221,7 @@ async function connectWifi(form) {
     const d = await resp.json();
     box.innerHTML = '<div class="banner ' + (resp.ok ? 'ok' : 'err') + '">' +
       escapeHtml(d.detail || (resp.ok ? 'Verbonden.' : 'Verbinden mislukt.')) + '</div>';
-    if (resp.ok) loadWifiStatus();
+    if (resp.ok) { loadWifiStatus(); loadSavedNetworks(); }
   } catch (e) {
     // A dropped connection here often means the switch is underway — say so.
     box.innerHTML = '<div class="banner warn">Verbinding met deze pagina verbroken — ' +
@@ -230,12 +236,42 @@ function signalBars(signal) {
   return '▂▄▆█'.slice(0, n) || '·';
 }
 
+async function loadSavedNetworks() {
+  const box = document.getElementById('wifi-saved');
+  try {
+    const d = await (await fetch('/api/wifi/saved')).json();
+    if (!d.supported) { box.innerHTML = '<p class="muted">Niet beschikbaar op dit toestel.</p>'; return; }
+    const nets = d.networks || [];
+    if (!nets.length) { box.innerHTML = '<p class="muted">Nog geen opgeslagen netwerken.</p>'; return; }
+    box.innerHTML = nets.map(n =>
+      '<div class="field-row" style="align-items:center;justify-content:space-between;' +
+      'border-top:1px solid var(--line,#e2e2e2);padding:.4rem 0">' +
+      '<span>' + escapeHtml(n.ssid) + (n.active ? ' <span class="badge">verbonden</span>' : '') + '</span>' +
+      '<button class="btn btn-danger" type="button" onclick="forgetNetwork(' +
+      JSON.stringify(n.name).replace(/"/g, '&quot;') + ')">Vergeten</button>' +
+      '</div>'
+    ).join('');
+  } catch (e) {
+    box.innerHTML = '<p class="muted">Kon opgeslagen netwerken niet laden.</p>';
+  }
+}
+
+async function forgetNetwork(name) {
+  if (!confirm('Netwerk "' + name + '" vergeten? Het toestel zal er niet meer automatisch mee verbinden.')) return;
+  const body = new FormData(); body.append('name', name);
+  try {
+    const resp = await fetch('/api/wifi/forget', { method: 'POST', body });
+    if (!resp.ok) { alert('Mislukt: ' + (await extractError(resp))); return; }
+    loadSavedNetworks();
+  } catch (e) { alert('Netwerkfout: ' + e); }
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-window.addEventListener('DOMContentLoaded', () => { loadWifiStatus(); scanWifi(); });
+window.addEventListener('DOMContentLoaded', () => { loadWifiStatus(); scanWifi(); loadSavedNetworks(); });
 
 async function confirmRestore(form) {
   if (!confirm('Weet je het zeker? Dit vervangt je huidige roosters, weekindeling en kalender.'))

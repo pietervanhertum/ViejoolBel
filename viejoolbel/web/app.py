@@ -926,6 +926,22 @@ def create_app(
         ok, detail = wifi.connect(ssid, password, settings.wifi_script)
         return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
 
+    @app.get("/api/wifi/saved")
+    def wifi_saved(_: LoggedIn) -> JSONResponse:
+        return JSONResponse(
+            {
+                "supported": wifi.available(),
+                "networks": [n.as_dict() for n in wifi.saved_networks()],
+            }
+        )
+
+    @app.post("/api/wifi/forget")
+    def wifi_forget(_: LoggedIn, name: Annotated[str, Form()]) -> JSONResponse:
+        if not name.strip():
+            raise HTTPException(400, "Geen netwerk opgegeven.")
+        ok, detail = wifi.forget(name, settings.wifi_forget_script)
+        return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
+
     # --- software update -------------------------------------------------
     @app.get("/api/update/check")
     def update_check(_: LoggedIn) -> JSONResponse:
