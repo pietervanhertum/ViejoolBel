@@ -3,6 +3,14 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.13] - 2026-09-10
+
+### Fixed
+- **WiFi diagnostics could crash with a PermissionError** when checking for the
+  polkit rule on a machine where `/etc/polkit-1/rules.d` is not traversable by the
+  app's user (Python 3.12's `Path.exists()` raises instead of returning False).
+  The check is now guarded and reports "unknown (no access)" instead.
+
 ## [0.2.12] - 2026-09-10
 
 ### Fixed

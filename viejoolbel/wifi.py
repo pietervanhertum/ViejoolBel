@@ -230,7 +230,13 @@ def diagnostics() -> str:
     lines: list[str] = []
     lines.append(f"user: {getpass.getuser()} (uid {os.getuid()})")
     polkit = Path("/etc/polkit-1/rules.d/10-viejoolbel-networkmanager.rules")
-    lines.append(f"polkit rule present: {polkit.exists()}")
+    try:
+        # Path.exists() can raise PermissionError (e.g. when rules.d is not
+        # traversable by this user), so guard it rather than let it propagate.
+        polkit_present: object = polkit.exists()
+    except OSError:
+        polkit_present = "unknown (no access)"
+    lines.append(f"polkit rule present: {polkit_present}")
     lines.append(f"nmcli available: {available()}")
     if not available():
         return "\n".join(lines) + "\nnmcli not found — WiFi cannot be managed here."
