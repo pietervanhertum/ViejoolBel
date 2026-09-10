@@ -277,18 +277,42 @@ def saved_networks() -> list[SavedNetwork]:
     return sorted(out, key=lambda n: (not n.active, n.ssid.lower()))
 
 
+def _active_connection_names() -> set[str]:
+    """Names of the currently-active NetworkManager connections."""
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["nmcli", "-t", "-f", "NAME", "connection", "show", "--active"],
+            capture_output=True,
+            text=True,
+            timeout=_SCAN_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    if proc.returncode != 0:
+        return set()
+    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+
+
 def forget(name: str) -> tuple[bool, str]:
     """Delete a saved network profile by its connection *name*.
 
     Runs ``nmcli`` directly: the polkit rule installed with the app authorises
     the service account to modify NetworkManager connections, so no sudo helper
-    is needed. Fails gracefully (never raises) when run off a real device.
+    is needed. Refuses to delete the connection the device is currently using —
+    doing so would drop the device off the network and lose the very access
+    path being used. Fails gracefully (never raises) when run off a real device.
     """
     name = name.strip()
     if not name:
         return False, "Geen netwerk opgegeven."
     if not available():
         return False, "WiFi-beheer is op dit toestel niet beschikbaar."
+    if name in _active_connection_names():
+        return False, (
+            "Dit is het netwerk waarmee het toestel nu verbonden is. Verbind eerst "
+            "met een ander netwerk voordat je dit vergeet, anders raakt het toestel "
+            "offline."
+        )
     try:
         proc = subprocess.run(  # noqa: S603 - argv list (no shell)
             ["nmcli", "connection", "delete", name],

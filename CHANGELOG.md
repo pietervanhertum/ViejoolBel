@@ -3,6 +3,19 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.5] - 2026-09-10
+
+### Fixed
+- **You could forget the network the device was connected to — and strand it.**
+  The saved-networks list showed a Vergeten button on the active connection;
+  deleting it dropped the device off WiFi and removed the profile, so it did not
+  reconnect on reboot. `forget()` now refuses to delete the active connection
+  (with a clear message), and the UI shows "in gebruik" instead of a button for
+  it.
+- **A failed WiFi switch could leave the device offline.** `set_wifi.sh` now
+  remembers the WiFi connection in use and, if joining the new network fails,
+  reactivates the previous one so the device stays reachable.
+
 ## [0.2.4] - 2026-09-10
 
 ### Changed

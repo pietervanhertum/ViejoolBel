@@ -312,8 +312,10 @@ async function loadSavedNetworks() {
       '<div class="wifi-row active">' +
         '<span class="ssid">' + escapeHtml(n.ssid) +
           (n.active ? ' <span class="badge">verbonden</span>' : '') + '</span>' +
-        '<button class="btn btn-danger" type="button" onclick="forgetNetwork(' +
-          JSON.stringify(n.name).replace(/"/g, '&quot;') + ')">Vergeten</button>' +
+        (n.active
+          ? '<span class="meta" title="Verbind eerst met een ander netwerk voor je dit vergeet.">in gebruik</span>'
+          : '<button class="btn btn-danger" type="button" onclick="forgetNetwork(' +
+            JSON.stringify(n.name).replace(/"/g, '&quot;') + ')">Vergeten</button>') +
       '</div>'
     ).join('') + '</div>';
   } catch (e) {

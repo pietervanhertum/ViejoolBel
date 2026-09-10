@@ -145,6 +145,23 @@ def test_forget_runs_nmcli_delete(monkeypatch: pytest.MonkeyPatch):
     assert seen["cmd"] == ["nmcli", "connection", "delete", "viejoolbel-Gastnet"]
 
 
+def test_forget_refuses_active_network(monkeypatch: pytest.MonkeyPatch):
+    # Deleting the connection in use would strand the device — refuse it.
+    monkeypatch.setattr(wifi, "available", lambda: True)
+    monkeypatch.setattr(wifi, "_active_connection_names", lambda: {"WiFi-2.4-1E62"})
+    called = {"delete": False}
+
+    def run(cmd, *a, **k):
+        if "delete" in cmd:
+            called["delete"] = True
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(wifi.subprocess, "run", run)
+    ok, msg = wifi.forget("WiFi-2.4-1E62")
+    assert ok is False and "verbonden" in msg.lower()
+    assert called["delete"] is False  # never even ran the delete
+
+
 def test_forget_translates_polkit_denied(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(wifi, "available", lambda: True)
     monkeypatch.setattr(
