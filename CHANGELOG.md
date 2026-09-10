@@ -3,6 +3,17 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **WiFi selection and login in Instellingen.** The settings page now shows the
+  network the device is on, scans for nearby WiFi (signal strength, lock icon for
+  secured networks), and lets you join one by picking it and entering the
+  password — the same flow the onboarding portal uses, now available any time the
+  network changes. Backed by `GET /api/wifi/scan`, `GET /api/wifi/status` and
+  `POST /api/wifi/connect` (new `viejoolbel/wifi.py`), which reuse the existing
+  scoped `set_wifi.sh` sudoers rule and degrade cleanly on a non-Pi machine.
+
 ## [0.1.8] - 2026-09-09
 
 ### Fixed

@@ -19,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import auth, updater
+from .. import auth, updater, wifi
 from .. import backup as backup_mod
 from ..bell import BellController
 from ..config import Settings
@@ -898,6 +898,33 @@ def create_app(
         with session_scope() as s:
             set_setting(s, "relay_enabled", "1" if enabled else "0")
         return JSONResponse({"ok": True, "relay_enabled": enabled})
+
+    # --- WiFi ------------------------------------------------------------
+    @app.get("/api/wifi/scan")
+    def wifi_scan(_: LoggedIn) -> JSONResponse:
+        return JSONResponse(
+            {
+                "supported": wifi.available(),
+                "networks": [n.as_dict() for n in wifi.scan()],
+            }
+        )
+
+    @app.get("/api/wifi/status")
+    def wifi_status(_: LoggedIn) -> JSONResponse:
+        return JSONResponse(
+            {"supported": wifi.available(), "current_ssid": wifi.current_ssid()}
+        )
+
+    @app.post("/api/wifi/connect")
+    def wifi_connect(
+        _: LoggedIn,
+        ssid: Annotated[str, Form()],
+        password: Annotated[str, Form()] = "",
+    ) -> JSONResponse:
+        if not ssid.strip():
+            raise HTTPException(400, "Geef een netwerknaam (SSID) op.")
+        ok, detail = wifi.connect(ssid, password, settings.wifi_script)
+        return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
 
     # --- software update -------------------------------------------------
     @app.get("/api/update/check")
