@@ -3,7 +3,7 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.1.8] - 2026-09-09
+## [0.2.0] - 2026-09-09
 
 ### Fixed
 - **The update button now works.** The systemd unit set `NoNewPrivileges=true`,
