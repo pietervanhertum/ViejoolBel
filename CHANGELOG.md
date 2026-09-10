@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `POST /api/wifi/connect` (new `viejoolbel/wifi.py`), which reuse the existing
   scoped `set_wifi.sh` sudoers rule and degrade cleanly on a non-Pi machine.
 
-## [0.1.8] - 2026-09-09
+## [0.2.0] - 2026-09-09
 
 ### Fixed
 - **The update button now works.** The systemd unit set `NoNewPrivileges=true`,
