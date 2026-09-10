@@ -234,6 +234,18 @@ def test_connect_endpoint_reports_failure(auth_client: TestClient):
     assert resp.json()["ok"] is False
 
 
+def test_diagnostics_reports_unavailable(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: False)
+    rep = wifi.diagnostics()
+    assert "nmcli" in rep.lower()
+
+
+def test_diagnostics_endpoint(auth_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "diagnostics", lambda: "REPORT-XYZ")
+    body = auth_client.get("/api/wifi/diagnostics").json()
+    assert body["report"] == "REPORT-XYZ"
+
+
 def test_wifi_endpoints_require_login(client: TestClient):
     assert client.get("/api/wifi/scan").status_code == 401
     assert client.post("/api/wifi/connect", data={"ssid": "x"}).status_code == 401

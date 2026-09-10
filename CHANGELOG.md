@@ -3,6 +3,17 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.6] - 2026-09-10
+
+### Added
+- **WiFi diagnose (voor support).** A collapsible "Diagnose" section under WiFi in
+  Instellingen shows the device's raw `nmcli` output — version, radio state,
+  device status, rescan result, and the network list **with the FREQ/band column**
+  — run as the app's own account. It makes clear why a scan finds nothing
+  (a 2.4 GHz-only radio that cannot see 5 GHz networks, or an authorisation error)
+  so it can be diagnosed without shell access. Backed by
+  `GET /api/wifi/diagnostics`.
+
 ## [0.2.5] - 2026-09-10
 
 ### Fixed

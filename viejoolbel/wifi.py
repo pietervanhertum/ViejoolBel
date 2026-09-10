@@ -15,6 +15,7 @@ raising.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import time
@@ -202,6 +203,66 @@ def scan() -> list[Network]:
         time.sleep(_RESCAN_SETTLE)
         nets = _wifi_list() or nets
     return nets
+
+
+def _run_capture(cmd: list[str], timeout: float = _SCAN_TIMEOUT) -> dict[str, object]:
+    """Run *cmd* and capture rc/stdout/stderr for the diagnostics report."""
+    try:
+        p = subprocess.run(  # noqa: S603 - argv list, no shell
+            cmd, capture_output=True, text=True, timeout=timeout
+        )
+        return {"cmd": " ".join(cmd), "rc": p.returncode,
+                "out": p.stdout.strip(), "err": p.stderr.strip()}
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"cmd": " ".join(cmd), "rc": None, "out": "", "err": str(exc)}
+
+
+def diagnostics() -> str:
+    """Produce a plain-text WiFi diagnostics report to paste into a support chat.
+
+    Runs the same tooling the app uses, as the same (unprivileged) service
+    account, so the output reflects exactly what the app sees — including the
+    band (FREQ) of each network, which reveals a 2.4 GHz-only radio, and any
+    authorisation errors from a missing polkit rule.
+    """
+    import getpass
+
+    lines: list[str] = []
+    lines.append(f"user: {getpass.getuser()} (uid {os.getuid()})")
+    polkit = Path("/etc/polkit-1/rules.d/10-viejoolbel-networkmanager.rules")
+    lines.append(f"polkit rule present: {polkit.exists()}")
+    lines.append(f"nmcli available: {available()}")
+    if not available():
+        return "\n".join(lines) + "\nnmcli not found — WiFi cannot be managed here."
+
+    steps: list[list[str]] = [
+        ["nmcli", "--version"],
+        ["nmcli", "radio", "wifi"],
+        ["nmcli", "device", "status"],
+        ["nmcli", "device", "wifi", "rescan"],
+    ]
+    for cmd in steps:
+        r = _run_capture(cmd)
+        lines.append("")
+        lines.append(f"$ {r['cmd']}   (rc={r['rc']})")
+        if r["out"]:
+            lines.append(str(r["out"]))
+        if r["err"]:
+            lines.append(f"[stderr] {r['err']}")
+
+    time.sleep(_RESCAN_SETTLE)
+    r = _run_capture(
+        ["nmcli", "-f", "IN-USE,SIGNAL,FREQ,SECURITY,SSID", "device", "wifi", "list"]
+    )
+    lines.append("")
+    lines.append(f"$ {r['cmd']}   (rc={r['rc']})")
+    if r["out"]:
+        lines.append(str(r["out"]))
+    if r["err"]:
+        lines.append(f"[stderr] {r['err']}")
+    lines.append("")
+    lines.append(f"networks parsed by the app: {len(scan())}")
+    return "\n".join(lines)
 
 
 def current_ssid() -> str | None:

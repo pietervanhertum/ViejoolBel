@@ -95,6 +95,19 @@
     bereik zijn (toegevoegd door te verbinden, of vooraf met <code>preseed_wifi.sh</code>).
     Verwijder er een die niet meer nodig is.</p>
   <div id="wifi-saved"><p class="muted">Laden…</p></div>
+
+  <details style="margin-top:1rem">
+    <summary style="cursor:pointer">Diagnose (voor support)</summary>
+    <p class="sub">Toont de ruwe WiFi-info van het toestel. Handig om te delen als
+      er geen netwerken verschijnen.</p>
+    <div class="form-actions">
+      <button class="btn" type="button" onclick="runDiagnostics()">Diagnose uitvoeren</button>
+      <button class="btn" type="button" onclick="copyDiagnostics()">Kopieer</button>
+    </div>
+    <pre id="wifi-diag" hidden style="max-height:320px;overflow:auto;background:#0f2740;
+         color:#e7eef7;padding:.6rem .8rem;border-radius:8px;font-size:.78rem;margin-top:.6rem;
+         white-space:pre-wrap"></pre>
+  </details>
 </section>
 
 <section class="card">
@@ -331,6 +344,25 @@ async function forgetNetwork(name) {
     if (!resp.ok) { alert('Mislukt: ' + (await extractError(resp))); return; }
     loadSavedNetworks();
   } catch (e) { alert('Netwerkfout: ' + e); }
+}
+
+async function runDiagnostics() {
+  const box = document.getElementById('wifi-diag');
+  box.hidden = false;
+  box.textContent = 'Bezig… (dit duurt een paar seconden)';
+  try {
+    const d = await (await fetch('/api/wifi/diagnostics')).json();
+    box.textContent = d.report || '(geen output)';
+  } catch (e) {
+    box.textContent = 'Diagnose mislukt: ' + e;
+  }
+}
+
+async function copyDiagnostics() {
+  const box = document.getElementById('wifi-diag');
+  if (box.hidden || !box.textContent) { alert('Voer eerst de diagnose uit.'); return; }
+  try { await navigator.clipboard.writeText(box.textContent); showToast('Gekopieerd ✓'); }
+  catch (e) { alert('Kon niet kopiëren; selecteer de tekst handmatig.'); }
 }
 
 function escapeHtml(s) {

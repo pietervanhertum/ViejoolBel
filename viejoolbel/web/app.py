@@ -942,6 +942,10 @@ def create_app(
         ok, detail = wifi.forget(name)
         return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
 
+    @app.get("/api/wifi/diagnostics")
+    def wifi_diagnostics(_: LoggedIn) -> JSONResponse:
+        return JSONResponse({"report": wifi.diagnostics()})
+
     # --- software update -------------------------------------------------
     @app.get("/api/update/check")
     def update_check(_: LoggedIn) -> JSONResponse:
