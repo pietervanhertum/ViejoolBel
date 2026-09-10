@@ -52,6 +52,29 @@ def test_rooster_relay_hidden_when_disabled(auth_client: TestClient):
     assert 'name="use_relay"' not in auth_client.get(f"/roosters/{new_id}").text
 
 
+def test_recent_rings_shown_in_local_timezone(auth_client: TestClient):
+    # RingLog.ts is stored as naive UTC; the dashboard must show it in the
+    # device timezone (Europe/Brussels). 20:00 UTC in June (CEST) = 22:00 local.
+    import datetime as dt
+
+    from viejoolbel.db import session_scope
+    from viejoolbel.models import RingLog, RingSource
+
+    with session_scope() as s:
+        s.add(
+            RingLog(
+                ts=dt.datetime(2025, 6, 1, 20, 0, 0),
+                source=RingSource.MANUAL,
+                sound_name="Test",
+                used_audio=True,
+                used_relay=False,
+                ok=True,
+            )
+        )
+    html = auth_client.get("/").text
+    assert "01/06 22:00" in html
+
+
 def test_kalender_month_navigation(auth_client: TestClient):
     resp = auth_client.get("/kalender?year=2025&month=12")
     assert resp.status_code == 200 and "december 2025" in resp.text

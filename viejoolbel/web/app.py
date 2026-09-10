@@ -147,9 +147,18 @@ def create_app(
             resolution = resolution_for(s, now.date())
             plan = planned_rings_for(s, now.date())
             sounds = list(s.scalars(select(Sound)))
-            recent = list(
-                s.scalars(select(RingLog).order_by(RingLog.ts.desc()).limit(10))
-            )
+            # RingLog.ts is stored as naive UTC; show it in the device's timezone
+            # (the top clock already is), otherwise recent rings look off by the
+            # UTC offset (e.g. 20:00 instead of 22:00 in CEST).
+            recent = [
+                {
+                    "ts": r.ts.replace(tzinfo=dt.UTC).astimezone(now.tzinfo),
+                    "source": r.source,
+                    "sound_name": r.sound_name,
+                    "ok": r.ok,
+                }
+                for r in s.scalars(select(RingLog).order_by(RingLog.ts.desc()).limit(10))
+            ]
             silenced = get_setting(s, "silence_date", "") == now.date().isoformat()
             default_pw = auth.uses_default_password(s)
             webhook_url = get_setting(s, "notify_webhook_url", settings.notify_webhook_url)

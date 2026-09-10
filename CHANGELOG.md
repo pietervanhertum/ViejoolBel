@@ -3,6 +3,15 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.12] - 2026-09-10
+
+### Fixed
+- **"Recente bellen" showed the wrong time (off by the UTC offset).** Ring-log
+  timestamps are stored as naive UTC but were printed without converting to the
+  device timezone, so a 22:00 ring (CEST) showed as 20:00. They are now shown in
+  the configured timezone, like the clock at the top. The schedule itself was
+  always correct — bell times fire in the configured timezone.
+
 ## [0.2.11] - 2026-09-10
 
 ### Fixed
