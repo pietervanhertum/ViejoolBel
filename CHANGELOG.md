@@ -3,7 +3,7 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.2.4] - 2026-09-10
 
 ### Changed
 - **WiFi is now managed the standard way — through NetworkManager, authorised by

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "viejoolbel"
-version = "0.2.0"
+version = "0.2.4"
 description = "Modern, calendar-aware school bell system for the Raspberry Pi"
 readme = "README.md"
 requires-python = ">=3.11"
