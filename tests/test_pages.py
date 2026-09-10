@@ -33,6 +33,25 @@ def test_rooster_detail_404(auth_client: TestClient):
     assert auth_client.get("/roosters/9999").status_code == 404
 
 
+def test_rooster_add_form_prefills_default_sound(auth_client: TestClient):
+    sounds = auth_client.get("/api/sounds").json()
+    assert sounds, "default sounds should be seeded"
+    sid = sounds[0]["id"]
+    assert auth_client.post(f"/api/sounds/{sid}/default").status_code == 200
+    # A fresh day-type has no events, so the only sound <select> is the add form.
+    new_id = auth_client.post("/api/day-types", data={"name": "PrefillDag"}).json()["id"]
+    html = auth_client.get(f"/roosters/{new_id}").text
+    assert f'value="{sid}" selected' in html
+
+
+def test_rooster_relay_hidden_when_disabled(auth_client: TestClient):
+    new_id = auth_client.post("/api/day-types", data={"name": "RelaisDag"}).json()["id"]
+    auth_client.post("/api/settings/relay", data={"enabled": "true"})
+    assert 'name="use_relay"' in auth_client.get(f"/roosters/{new_id}").text
+    auth_client.post("/api/settings/relay", data={"enabled": "false"})
+    assert 'name="use_relay"' not in auth_client.get(f"/roosters/{new_id}").text
+
+
 def test_kalender_month_navigation(auth_client: TestClient):
     resp = auth_client.get("/kalender?year=2025&month=12")
     assert resp.status_code == 200 and "december 2025" in resp.text

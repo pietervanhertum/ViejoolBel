@@ -266,6 +266,7 @@ def create_app(
             events=events,
             sounds=sounds,
             relay_enabled=_relay_enabled(),
+            default_sound_id=_default_sound_id(),
         )
 
     @app.get("/kalender", response_class=HTMLResponse, response_model=None)

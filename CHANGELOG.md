@@ -3,6 +3,17 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.11] - 2026-09-10
+
+### Fixed
+- **Turning the relay off now also hides it when adding a bell time.** The
+  "Belmoment toevoegen" form in a schedule still showed the relay checkbox (and
+  the "(alleen relais)" option) after the relay was disabled — everywhere else it
+  was already hidden. It now follows the relay master switch like the rest of the UI.
+- **The default bell is now pre-filled when adding a bell time.** The sound
+  dropdown in a schedule's "add" form now pre-selects the default bell, so a new
+  bell time uses it without having to pick it each time.
+
 ## [0.2.10] - 2026-09-10
 
 ### Changed
