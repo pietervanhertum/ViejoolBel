@@ -21,11 +21,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   privileged delete.
 
 ### Fixed
-- **The WiFi scan only showed the currently-connected network.** `nmcli device
-  wifi list` returns a cached scan, so nearby networks the device was not
-  associated with were missing from the picker. The scan now forces a fresh
-  rescan (`--rescan yes`) and falls back to the cached list when NetworkManager
-  rate-limits it.
+- **The WiFi scan still showed only the connected network.** `nmcli device wifi
+  list --rescan yes` is all-or-nothing: when NetworkManager refuses the rescan
+  (it rate-limits them, e.g. right after connecting) the whole call fails and the
+  code fell back to the stale cache — which usually holds just the connected AP.
+  The rescan is now triggered on its own (a refusal is ignored) and the list is
+  read afterwards, with a short wait and re-read when the first read is still
+  sparse, so nearby networks actually appear.
+- **Forgetting a saved network failed with a raw `sudo: a password is required`
+  error** when the device had not yet refreshed its sudoers rule for the new
+  `forget_wifi.sh` helper. The WiFi actions now detect that specific sudo failure
+  and show an actionable message (update the device, or re-run `install.sh`)
+  instead of the cryptic sudo output.
 
 ## [0.2.0] - 2026-09-09
 

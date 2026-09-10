@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,9 +26,26 @@ log = logging.getLogger(__name__)
 # Joining a network can involve a DHCP round-trip; cap it so the request cannot
 # hang forever if the credentials are wrong or the AP is out of range.
 _CONNECT_TIMEOUT = 45.0
-# Forcing a fresh scan (--rescan yes) blocks until NetworkManager finishes
-# scanning, which can take a while on a busy radio; give it room.
+# Cap for the individual nmcli scan/list calls.
 _SCAN_TIMEOUT = 25.0
+# How long to wait for a triggered rescan to populate before re-reading the list.
+_RESCAN_SETTLE = 3.0
+
+# Shown when sudo demands a password: the NOPASSWD rule for a helper is not (yet)
+# on the device. This happens when a device updated to a release that added a new
+# privileged helper but its sudoers rule has not been refreshed onto the system.
+_SUDO_HINT = (
+    "Onvoldoende rechten op het toestel (de sudo-regel ontbreekt nog). "
+    "Werk het toestel bij naar de nieuwste versie, of voer op het toestel "
+    "'sudo ./deploy/install.sh' opnieuw uit om de rechten te installeren."
+)
+
+
+def _is_sudo_password_error(text: str) -> bool:
+    """True when sudo failed because it wanted a password (no matching NOPASSWD
+    rule) rather than because the command itself failed."""
+    low = text.lower()
+    return "a password is required" in low or "a terminal is required" in low
 
 
 @dataclass(frozen=True)
@@ -73,45 +91,47 @@ def _split_terse(line: str) -> list[str]:
     return fields
 
 
-def _wifi_list(*, rescan: bool) -> subprocess.CompletedProcess[str] | None:
-    """Run ``nmcli device wifi list``. With *rescan* it forces a fresh scan and
-    waits for it (``--rescan yes``); otherwise it returns NetworkManager's cached
-    result. Returns None on an error/timeout so the caller can fall back."""
-    cmd = ["nmcli", "-t", "-f", "ACTIVE,SIGNAL,SECURITY,SSID", "device", "wifi", "list"]
-    if rescan:
-        cmd += ["--rescan", "yes"]
+def _trigger_rescan() -> None:
+    """Ask NetworkManager to actively scan for networks (best effort).
+
+    This is separate from listing on purpose: ``nmcli device wifi list
+    --rescan yes`` is all-or-nothing — if NM refuses the rescan (it rate-limits
+    how often one can run, e.g. right after connecting) the whole call fails and
+    the caller is left with the stale cache, which often holds only the
+    currently-connected AP. Triggering the rescan on its own and ignoring a
+    "scanning not allowed" refusal lets us still read a fresh list afterwards."""
     try:
-        proc = subprocess.run(  # noqa: S603 - argv list, no shell
-            cmd, capture_output=True, text=True, timeout=_SCAN_TIMEOUT
+        subprocess.run(  # noqa: S603 - argv list, no shell
+            ["nmcli", "device", "wifi", "rescan"],
+            capture_output=True,
+            text=True,
+            timeout=_SCAN_TIMEOUT,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        log.warning("WiFi scan failed: %s", exc)
-        return None
+        log.debug("WiFi rescan trigger failed (continuing with cache): %s", exc)
+
+
+def _wifi_list() -> list[Network]:
+    """Read NetworkManager's current WiFi list (no rescan) and parse it."""
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["nmcli", "-t", "-f", "ACTIVE,SIGNAL,SECURITY,SSID", "device", "wifi", "list"],
+            capture_output=True,
+            text=True,
+            timeout=_SCAN_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("WiFi list failed: %s", exc)
+        return []
     if proc.returncode != 0:
-        log.warning("WiFi scan returned %s: %s", proc.returncode, proc.stderr.strip())
-        return None
-    return proc
-
-
-def scan() -> list[Network]:
-    """Return nearby WiFi networks, strongest first, deduplicated by SSID.
-
-    Forces a fresh scan so networks the device is not connected to also show up;
-    without ``--rescan yes`` nmcli returns a cached list that often contains only
-    the currently-associated AP. Falls back to the cached list if NetworkManager
-    refuses the rescan (it rate-limits how often one can be requested).
-
-    Returns an empty list when WiFi cannot be managed here or the scan fails,
-    so callers never have to handle an exception.
-    """
-    if not available():
+        log.warning("WiFi list returned %s: %s", proc.returncode, proc.stderr.strip())
         return []
-    proc = _wifi_list(rescan=True) or _wifi_list(rescan=False)
-    if proc is None:
-        return []
+    return _parse_networks(proc.stdout)
 
+
+def _parse_networks(stdout: str) -> list[Network]:
     best: dict[str, Network] = {}
-    for line in proc.stdout.splitlines():
+    for line in stdout.splitlines():
         if not line.strip():
             continue
         # SECURITY may itself be empty or contain spaces (e.g. "WPA2 802.1X"); it
@@ -140,6 +160,29 @@ def scan() -> list[Network]:
                 active=prev.active or active,
             )
     return sorted(best.values(), key=lambda n: (not n.active, -n.signal, n.ssid.lower()))
+
+
+def scan() -> list[Network]:
+    """Return nearby WiFi networks, strongest first, deduplicated by SSID.
+
+    Triggers a fresh scan so networks the device is not connected to also show
+    up — nmcli's cached list often holds only the currently-associated AP. The
+    rescan runs on its own (a refusal is ignored) and, because a scan takes a
+    moment to complete, the list is read again after a short wait when the first
+    read still shows one network or none.
+
+    Returns an empty list when WiFi cannot be managed here or the scan fails,
+    so callers never have to handle an exception.
+    """
+    if not available():
+        return []
+    _trigger_rescan()
+    nets = _wifi_list()
+    if len(nets) <= 1:
+        # The scan was probably still running; give it a moment and re-read.
+        time.sleep(_RESCAN_SETTLE)
+        nets = _wifi_list() or nets
+    return nets
 
 
 def current_ssid() -> str | None:
@@ -238,6 +281,8 @@ def forget(name: str, script: Path) -> tuple[bool, str]:
         return False, f"Kon netwerk niet verwijderen: {exc}"
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout).strip() or f"foutcode {proc.returncode}"
+        if _is_sudo_password_error(detail):
+            return False, _SUDO_HINT
         return False, f"Verwijderen van '{name}' mislukt: {detail}"
     return True, f"Netwerk '{name}' verwijderd."
 
@@ -276,5 +321,7 @@ def connect(ssid: str, password: str, script: Path) -> tuple[bool, str]:
         return False, f"Kon WiFi-verbinding niet starten: {exc}"
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout).strip() or f"foutcode {proc.returncode}"
+        if _is_sudo_password_error(detail):
+            return False, _SUDO_HINT
         return False, f"Verbinden met '{ssid}' mislukt: {detail}"
     return True, f"Verbonden met '{ssid}'. Het toestel is bereikbaar op viejoolbel.local."
