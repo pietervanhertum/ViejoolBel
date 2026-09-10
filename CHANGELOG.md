@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- **WiFi is now managed the standard way — through NetworkManager, authorised by
+  a polkit rule.** The app runs as an unprivileged service account, which
+  NetworkManager otherwise only hands cached scan results (usually just the
+  connected AP) while refusing connection changes — so the picker looked empty
+  and "forget" failed with a sudo password prompt. A polkit rule
+  (`deploy/polkit/10-viejoolbel-networkmanager.rules`, installed by `install.sh`
+  and refreshed on update) grants the service account NetworkManager access, so
+  `nmcli` scan / connect / delete work directly. Forgetting a network no longer
+  goes through a sudo helper (`forget_wifi.sh` and its sudoers rule are removed).
+- **A clearer WiFi picker.** The dropdown is replaced by an OS-style list of
+  nearby networks — signal strength and a lock icon per row, the connected one
+  marked — where selecting a secured network reveals an inline password field and
+  a Verbind button. A "Verborgen netwerk…" option adds a network by name, and the
+  saved-networks list keeps its per-network Vergeten button.
+
 ### Added
 - **WiFi selection and login in Instellingen.** The settings page now shows the
   network the device is on, scans for nearby WiFi (signal strength, lock icon for

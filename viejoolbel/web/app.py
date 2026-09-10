@@ -939,7 +939,7 @@ def create_app(
     def wifi_forget(_: LoggedIn, name: Annotated[str, Form()]) -> JSONResponse:
         if not name.strip():
             raise HTTPException(400, "Geen netwerk opgegeven.")
-        ok, detail = wifi.forget(name, settings.wifi_forget_script)
+        ok, detail = wifi.forget(name)
         return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
 
     # --- software update -------------------------------------------------

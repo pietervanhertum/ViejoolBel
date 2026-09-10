@@ -36,10 +36,10 @@ ProtectSystem=full
 ProtectHome=true
 PrivateTmp=true
 # The in-app updater (deploy/apply_update.sh, run as root via sudo) refreshes the
-# unit and sudoers rule from each new release. ProtectSystem=full otherwise makes
-# /etc read-only for the service and its children, so expose just these two paths
-# read-write; everything else under /etc stays protected.
-ReadWritePaths=/etc/systemd/system /etc/sudoers.d
+# unit, sudoers rule and polkit rule from each new release. ProtectSystem=full
+# otherwise makes /etc read-only for the service and its children, so expose just
+# these paths read-write; everything else under /etc stays protected.
+ReadWritePaths=/etc/systemd/system /etc/sudoers.d /etc/polkit-1/rules.d
 
 [Install]
 WantedBy=multi-user.target

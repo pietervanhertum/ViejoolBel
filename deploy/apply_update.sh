@@ -64,6 +64,7 @@ install_deploy_config() {
   local src="$1"
   local unit_src="${src}/deploy/systemd/viejoolbel.service"
   local sudo_src="${src}/deploy/sudoers.d/viejoolbel"
+  local polkit_src="${src}/deploy/polkit/10-viejoolbel-networkmanager.rules"
 
   if [[ -f "${unit_src}" ]]; then
     if install -m 644 "${unit_src}" /etc/systemd/system/viejoolbel.service 2>/dev/null; then
@@ -81,6 +82,18 @@ install_deploy_config() {
       log "Refreshed sudoers rule from ${src}."
     else
       log "WARN: could not write the sudoers rule (left as-is)."
+    fi
+  fi
+
+  # Refresh the polkit rule that authorises the service account to manage WiFi
+  # through NetworkManager. polkit auto-reloads rules.d, so no explicit reload.
+  if [[ -f "${polkit_src}" ]]; then
+    if install -d /etc/polkit-1/rules.d 2>/dev/null \
+       && install -m 644 "${polkit_src}" \
+            /etc/polkit-1/rules.d/10-viejoolbel-networkmanager.rules 2>/dev/null; then
+      log "Refreshed polkit rule from ${src}."
+    else
+      log "WARN: could not write the polkit rule (left as-is)."
     fi
   fi
 }

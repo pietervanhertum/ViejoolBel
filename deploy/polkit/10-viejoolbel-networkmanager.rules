@@ -1,0 +1,20 @@
+// Let the unprivileged "viejoolbel" service account manage WiFi through
+// NetworkManager — scan for networks, connect, and add/remove saved
+// connections — without a password or an interactive login session.
+//
+// This is the standard way to give a headless daemon NetworkManager access on
+// systems that use polkit (Raspberry Pi OS / Debian Bookworm and newer). Without
+// it, NetworkManager only hands an unprivileged, session-less process cached scan
+// results (typically just the currently-connected AP) and refuses connection
+// changes, so the app's WiFi picker looked empty and "forget" failed.
+//
+// polkit evaluates .rules files administratively, so returning YES here grants
+// the service account the permission directly — no polkit agent, sudo, or logged
+// in user required. The grant is limited to NetworkManager actions and to this
+// one system account.
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0 &&
+        subject.user === "viejoolbel") {
+        return polkit.Result.YES;
+    }
+});

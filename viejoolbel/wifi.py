@@ -40,12 +40,31 @@ _SUDO_HINT = (
     "'sudo ./deploy/install.sh' opnieuw uit om de rechten te installeren."
 )
 
+# Shown when NetworkManager refuses an action because the polkit rule that grants
+# the service account access is not (yet) installed on the device.
+_POLKIT_HINT = (
+    "Onvoldoende rechten om WiFi te beheren via NetworkManager. Werk het toestel "
+    "bij naar de nieuwste versie, of voer op het toestel 'sudo ./deploy/install.sh' "
+    "opnieuw uit; daarna staat de benodigde polkit-regel geïnstalleerd."
+)
+
 
 def _is_sudo_password_error(text: str) -> bool:
     """True when sudo failed because it wanted a password (no matching NOPASSWD
     rule) rather than because the command itself failed."""
     low = text.lower()
     return "a password is required" in low or "a terminal is required" in low
+
+
+def _is_polkit_denied(text: str) -> bool:
+    """True when NetworkManager refused an action for lack of authorisation
+    (the polkit rule granting the service account is missing)."""
+    low = text.lower()
+    return (
+        "not authorized" in low
+        or "insufficient privileges" in low
+        or "permission denied" in low
+    )
 
 
 @dataclass(frozen=True)
@@ -258,21 +277,21 @@ def saved_networks() -> list[SavedNetwork]:
     return sorted(out, key=lambda n: (not n.active, n.ssid.lower()))
 
 
-def forget(name: str, script: Path) -> tuple[bool, str]:
+def forget(name: str) -> tuple[bool, str]:
     """Delete a saved network profile by its connection *name*.
 
-    Fails gracefully (never raises) when run off a real device.
+    Runs ``nmcli`` directly: the polkit rule installed with the app authorises
+    the service account to modify NetworkManager connections, so no sudo helper
+    is needed. Fails gracefully (never raises) when run off a real device.
     """
     name = name.strip()
     if not name:
         return False, "Geen netwerk opgegeven."
-    if shutil.which("sudo") is None:
-        return False, "sudo niet beschikbaar (alleen op het geïnstalleerde toestel)."
-    if not script.exists():
-        return False, f"WiFi-script niet gevonden op {script} (alleen op het toestel)."
+    if not available():
+        return False, "WiFi-beheer is op dit toestel niet beschikbaar."
     try:
-        proc = subprocess.run(  # noqa: S603 - argv list (no shell); arg validated
-            ["sudo", str(script), name],
+        proc = subprocess.run(  # noqa: S603 - argv list (no shell)
+            ["nmcli", "connection", "delete", name],
             capture_output=True,
             text=True,
             timeout=_CONNECT_TIMEOUT,
@@ -281,8 +300,8 @@ def forget(name: str, script: Path) -> tuple[bool, str]:
         return False, f"Kon netwerk niet verwijderen: {exc}"
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout).strip() or f"foutcode {proc.returncode}"
-        if _is_sudo_password_error(detail):
-            return False, _SUDO_HINT
+        if _is_polkit_denied(detail):
+            return False, _POLKIT_HINT
         return False, f"Verwijderen van '{name}' mislukt: {detail}"
     return True, f"Netwerk '{name}' verwijderd."
 
