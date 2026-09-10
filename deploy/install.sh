@@ -67,6 +67,16 @@ chown -R "${APP_USER}:${APP_USER}" "${OPT_DIR}" "${DATA_DIR}" "${ETC_DIR}"
 echo "==> Installing sudoers rule for privileged actions"
 install -m 440 "${SRC_DIR}/deploy/sudoers.d/viejoolbel" /etc/sudoers.d/viejoolbel
 
+echo "==> Installing polkit rule so the service can manage WiFi via NetworkManager"
+# Lets the unprivileged service account scan/connect/forget WiFi through
+# NetworkManager without sudo or a login session (the standard way to give a
+# headless daemon NM access). polkit picks up rules.d changes automatically; a
+# reload just makes it immediate.
+install -d /etc/polkit-1/rules.d
+install -m 644 "${SRC_DIR}/deploy/polkit/10-viejoolbel-networkmanager.rules" \
+  /etc/polkit-1/rules.d/10-viejoolbel-networkmanager.rules
+systemctl reload polkit >/dev/null 2>&1 || systemctl restart polkit >/dev/null 2>&1 || true
+
 echo "==> Installing systemd unit"
 install -m 644 "${SRC_DIR}/deploy/systemd/viejoolbel.service" /etc/systemd/system/viejoolbel.service
 

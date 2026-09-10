@@ -78,24 +78,6 @@ def test_is_sudo_password_error():
     assert not wifi._is_sudo_password_error("Error: unknown connection 'x'")
 
 
-def test_forget_translates_sudo_denied(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    # When the NOPASSWD rule is missing, sudo asks for a password; the user must
-    # get the actionable hint, not the raw sudo error.
-    script = tmp_path / "forget_wifi.sh"
-    script.write_text("#!/bin/sh\n")
-    script.chmod(0o755)
-    monkeypatch.setattr(wifi.shutil, "which", lambda _x: "/usr/bin/sudo")
-    monkeypatch.setattr(
-        wifi.subprocess,
-        "run",
-        lambda *a, **k: subprocess.CompletedProcess(
-            a, 1, stdout="", stderr="sudo: a password is required"
-        ),
-    )
-    ok, msg = wifi.forget("netplan-wlan0-WiFi", script)
-    assert ok is False and "rechten" in msg.lower()
-
-
 def test_current_ssid_returns_active(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(wifi, "available", lambda: True)
     monkeypatch.setattr(wifi.subprocess, "run", _fake_run(_SCAN_OUTPUT))
@@ -138,14 +120,65 @@ def test_saved_networks_empty_when_unsupported(monkeypatch: pytest.MonkeyPatch):
     assert wifi.saved_networks() == []
 
 
-def test_forget_requires_name(tmp_path):
-    ok, msg = wifi.forget("  ", tmp_path / "forget_wifi.sh")
+def test_forget_requires_name():
+    ok, _msg = wifi.forget("  ")
     assert ok is False
 
 
-def test_forget_fails_gracefully_without_script(tmp_path):
-    ok, msg = wifi.forget("SchoolWiFi", tmp_path / "missing.sh")
-    assert ok is False and "script" in msg.lower()
+def test_forget_unsupported_without_nmcli(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: False)
+    ok, msg = wifi.forget("SchoolWiFi")
+    assert ok is False and "beschikbaar" in msg.lower()
+
+
+def test_forget_runs_nmcli_delete(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: True)
+    seen = {}
+
+    def run(cmd, *args, **kwargs):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(wifi.subprocess, "run", run)
+    ok, _msg = wifi.forget("viejoolbel-Gastnet")
+    assert ok is True
+    assert seen["cmd"] == ["nmcli", "connection", "delete", "viejoolbel-Gastnet"]
+
+
+def test_forget_refuses_active_network(monkeypatch: pytest.MonkeyPatch):
+    # Deleting the connection in use would strand the device — refuse it.
+    monkeypatch.setattr(wifi, "available", lambda: True)
+    monkeypatch.setattr(wifi, "_active_connection_names", lambda: {"WiFi-2.4-1E62"})
+    called = {"delete": False}
+
+    def run(cmd, *a, **k):
+        if "delete" in cmd:
+            called["delete"] = True
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(wifi.subprocess, "run", run)
+    ok, msg = wifi.forget("WiFi-2.4-1E62")
+    assert ok is False and "verbonden" in msg.lower()
+    assert called["delete"] is False  # never even ran the delete
+
+
+def test_forget_translates_polkit_denied(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: True)
+    monkeypatch.setattr(
+        wifi.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(
+            a, 1, stdout="", stderr="Error: not authorized to control networking."
+        ),
+    )
+    ok, msg = wifi.forget("SchoolWiFi")
+    assert ok is False and "rechten" in msg.lower()
+
+
+def test_is_polkit_denied():
+    assert wifi._is_polkit_denied("Error: not authorized to control networking.")
+    assert wifi._is_polkit_denied("insufficient privileges")
+    assert not wifi._is_polkit_denied("Error: unknown connection 'x'")
 
 
 def test_saved_endpoint(auth_client: TestClient, monkeypatch: pytest.MonkeyPatch):
@@ -199,6 +232,18 @@ def test_connect_endpoint_reports_failure(auth_client: TestClient):
     resp = auth_client.post("/api/wifi/connect", data={"ssid": "SchoolWiFi", "password": "pw"})
     assert resp.status_code == 502
     assert resp.json()["ok"] is False
+
+
+def test_diagnostics_reports_unavailable(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: False)
+    rep = wifi.diagnostics()
+    assert "nmcli" in rep.lower()
+
+
+def test_diagnostics_endpoint(auth_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "diagnostics", lambda: "REPORT-XYZ")
+    body = auth_client.get("/api/wifi/diagnostics").json()
+    assert body["report"] == "REPORT-XYZ"
 
 
 def test_wifi_endpoints_require_login(client: TestClient):

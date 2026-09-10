@@ -18,9 +18,10 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import threading
+import time
 from zoneinfo import ZoneInfo
 
-from . import health, systemd_notify
+from . import ap, health, systemd_notify
 from .config import Settings
 from .db import get_setting, session_scope
 from .health import HealthReport, Level
@@ -46,6 +47,9 @@ class HealthMonitor:
         self._last_report: HealthReport | None = None
         self._last_level = Level.OK
         self._lock = threading.Lock()
+        # Offline safety-net state.
+        self._offline_since: float | None = None
+        self._fallback_engaged = False
 
     @property
     def last_report(self) -> HealthReport | None:
@@ -78,6 +82,11 @@ class HealthMonitor:
             since_health += tick
             since_heartbeat += tick
 
+            try:
+                self._check_network_fallback()
+            except Exception:  # the monitor must never die
+                log.exception("Network fallback check failed")
+
             if since_health >= self._settings.health_interval_seconds:
                 since_health = 0.0
                 try:
@@ -92,6 +101,53 @@ class HealthMonitor:
                     self._notifier.heartbeat(self._heartbeat_url())
 
             self._stop.wait(tick)
+
+    # --- offline safety net ---------------------------------------------
+    def _ap_fallback_minutes(self) -> int:
+        with session_scope() as s:
+            raw = get_setting(s, "ap_fallback_minutes", str(self._settings.ap_fallback_minutes))
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return self._settings.ap_fallback_minutes
+
+    def _check_network_fallback(self) -> None:
+        """If the device has had no network for the configured grace period, open
+        the onboarding AP so it can be recovered on-site. A short blip resets the
+        timer, so a router reboot or brief hiccup never triggers it; and once the
+        AP is up we stand down (it blocks WiFi, so re-checking would just loop)."""
+        minutes = self._ap_fallback_minutes()
+        if minutes <= 0:  # disabled
+            self._offline_since = None
+            return
+        if ap.network_online():
+            self._offline_since = None
+            self._fallback_engaged = False
+            return
+        # Offline. If the fallback AP (or an AP test) is already up, stand down.
+        if ap.ap_is_active():
+            self._fallback_engaged = True
+            return
+        now = time.monotonic()
+        if self._offline_since is None:
+            self._offline_since = now
+            return
+        if not self._fallback_engaged and (now - self._offline_since) >= minutes * 60:
+            log.warning("No network for %d min; opening onboarding AP (safety net).", minutes)
+            self._fallback_engaged = True
+            ap.raise_ap(self._settings.ap_control_script)
+            url = self._webhook_url()
+            if url:
+                self._notifier.alert(
+                    url,
+                    level="warning",
+                    title="ViejoolBel: geen netwerk",
+                    message=(
+                        f"Geen netwerk sinds {minutes} min. Het onboarding-netwerk "
+                        f"'{ap.AP_SSID}' is geopend zodat het toestel ter plaatse "
+                        "hersteld kan worden."
+                    ),
+                )
 
     def evaluate_once(self) -> HealthReport:
         """Evaluate health, store it, and fire alerts on state transitions.

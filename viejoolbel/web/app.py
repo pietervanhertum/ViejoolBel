@@ -19,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import auth, updater, wifi
+from .. import ap, auth, updater, wifi
 from .. import backup as backup_mod
 from ..bell import BellController
 from ..config import Settings
@@ -147,9 +147,18 @@ def create_app(
             resolution = resolution_for(s, now.date())
             plan = planned_rings_for(s, now.date())
             sounds = list(s.scalars(select(Sound)))
-            recent = list(
-                s.scalars(select(RingLog).order_by(RingLog.ts.desc()).limit(10))
-            )
+            # RingLog.ts is stored as naive UTC; show it in the device's timezone
+            # (the top clock already is), otherwise recent rings look off by the
+            # UTC offset (e.g. 20:00 instead of 22:00 in CEST).
+            recent = [
+                {
+                    "ts": r.ts.replace(tzinfo=dt.UTC).astimezone(now.tzinfo),
+                    "source": r.source,
+                    "sound_name": r.sound_name,
+                    "ok": r.ok,
+                }
+                for r in s.scalars(select(RingLog).order_by(RingLog.ts.desc()).limit(10))
+            ]
             silenced = get_setting(s, "silence_date", "") == now.date().isoformat()
             default_pw = auth.uses_default_password(s)
             webhook_url = get_setting(s, "notify_webhook_url", settings.notify_webhook_url)
@@ -266,6 +275,7 @@ def create_app(
             events=events,
             sounds=sounds,
             relay_enabled=_relay_enabled(),
+            default_sound_id=_default_sound_id(),
         )
 
     @app.get("/kalender", response_class=HTMLResponse, response_model=None)
@@ -939,7 +949,41 @@ def create_app(
     def wifi_forget(_: LoggedIn, name: Annotated[str, Form()]) -> JSONResponse:
         if not name.strip():
             raise HTTPException(400, "Geen netwerk opgegeven.")
-        ok, detail = wifi.forget(name, settings.wifi_forget_script)
+        ok, detail = wifi.forget(name)
+        return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
+
+    @app.get("/api/wifi/diagnostics")
+    def wifi_diagnostics(_: LoggedIn) -> JSONResponse:
+        return JSONResponse({"report": wifi.diagnostics()})
+
+    # --- onboarding access point ----------------------------------------
+    @app.get("/api/ap/status")
+    def ap_status(_: LoggedIn) -> JSONResponse:
+        data = ap.status(settings.ap_control_script)
+        with session_scope() as s:
+            raw = get_setting(s, "ap_fallback_minutes", str(settings.ap_fallback_minutes))
+        try:
+            data["fallback_minutes"] = int(raw)
+        except (TypeError, ValueError):
+            data["fallback_minutes"] = settings.ap_fallback_minutes
+        return JSONResponse(data)
+
+    @app.post("/api/ap/fallback")
+    def ap_set_fallback(_: LoggedIn, minutes: Annotated[int, Form()]) -> JSONResponse:
+        if not 0 <= minutes <= 240:
+            raise HTTPException(400, "minuten moet tussen 0 en 240 liggen")
+        with session_scope() as s:
+            set_setting(s, "ap_fallback_minutes", str(minutes))
+        return JSONResponse({"ok": True, "fallback_minutes": minutes})
+
+    @app.post("/api/ap/enabled")
+    def ap_set_enabled(_: LoggedIn, enabled: Annotated[bool, Form()]) -> JSONResponse:
+        ok, detail = ap.set_enabled(settings.ap_control_script, enabled)
+        return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
+
+    @app.post("/api/ap/test")
+    def ap_test(_: LoggedIn, minutes: Annotated[int, Form()] = 5) -> JSONResponse:
+        ok, detail = ap.start_test(settings.ap_control_script, minutes)
         return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
 
     # --- software update -------------------------------------------------

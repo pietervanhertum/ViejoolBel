@@ -53,10 +53,13 @@ class Settings(BaseSettings):
     # Privileged helper that joins a WiFi network + tears down the onboarding AP
     # (see wifi.py). Invoked via the scoped sudoers rule.
     wifi_script: Path = Field(default=Path("/opt/viejoolbel/current/deploy/set_wifi.sh"))
-    # Privileged helper that forgets (deletes) a saved WiFi profile (see wifi.py).
-    wifi_forget_script: Path = Field(
-        default=Path("/opt/viejoolbel/current/deploy/forget_wifi.sh")
+    # Privileged helper that manages the onboarding access point (see ap.py).
+    ap_control_script: Path = Field(
+        default=Path("/opt/viejoolbel/current/deploy/ap_control.sh")
     )
+    # Safety net: if the device has no network for this many minutes, open the
+    # onboarding AP so it can be recovered on-site. 0 disables it. UI-editable.
+    ap_fallback_minutes: int = 15
     # Optional GitHub token (read-only) so the update check + clone work on a
     # PRIVATE repository. Stored in /etc/viejoolbel/viejoolbel.env. See
     # docs/github-auth.md.

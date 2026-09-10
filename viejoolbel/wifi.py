@@ -15,6 +15,7 @@ raising.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import time
@@ -40,12 +41,31 @@ _SUDO_HINT = (
     "'sudo ./deploy/install.sh' opnieuw uit om de rechten te installeren."
 )
 
+# Shown when NetworkManager refuses an action because the polkit rule that grants
+# the service account access is not (yet) installed on the device.
+_POLKIT_HINT = (
+    "Onvoldoende rechten om WiFi te beheren via NetworkManager. Werk het toestel "
+    "bij naar de nieuwste versie, of voer op het toestel 'sudo ./deploy/install.sh' "
+    "opnieuw uit; daarna staat de benodigde polkit-regel geïnstalleerd."
+)
+
 
 def _is_sudo_password_error(text: str) -> bool:
     """True when sudo failed because it wanted a password (no matching NOPASSWD
     rule) rather than because the command itself failed."""
     low = text.lower()
     return "a password is required" in low or "a terminal is required" in low
+
+
+def _is_polkit_denied(text: str) -> bool:
+    """True when NetworkManager refused an action for lack of authorisation
+    (the polkit rule granting the service account is missing)."""
+    low = text.lower()
+    return (
+        "not authorized" in low
+        or "insufficient privileges" in low
+        or "permission denied" in low
+    )
 
 
 @dataclass(frozen=True)
@@ -185,6 +205,72 @@ def scan() -> list[Network]:
     return nets
 
 
+def _run_capture(cmd: list[str], timeout: float = _SCAN_TIMEOUT) -> dict[str, object]:
+    """Run *cmd* and capture rc/stdout/stderr for the diagnostics report."""
+    try:
+        p = subprocess.run(  # noqa: S603 - argv list, no shell
+            cmd, capture_output=True, text=True, timeout=timeout
+        )
+        return {"cmd": " ".join(cmd), "rc": p.returncode,
+                "out": p.stdout.strip(), "err": p.stderr.strip()}
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"cmd": " ".join(cmd), "rc": None, "out": "", "err": str(exc)}
+
+
+def diagnostics() -> str:
+    """Produce a plain-text WiFi diagnostics report to paste into a support chat.
+
+    Runs the same tooling the app uses, as the same (unprivileged) service
+    account, so the output reflects exactly what the app sees — including the
+    band (FREQ) of each network, which reveals a 2.4 GHz-only radio, and any
+    authorisation errors from a missing polkit rule.
+    """
+    import getpass
+
+    lines: list[str] = []
+    lines.append(f"user: {getpass.getuser()} (uid {os.getuid()})")
+    polkit = Path("/etc/polkit-1/rules.d/10-viejoolbel-networkmanager.rules")
+    try:
+        # Path.exists() can raise PermissionError (e.g. when rules.d is not
+        # traversable by this user), so guard it rather than let it propagate.
+        polkit_present: object = polkit.exists()
+    except OSError:
+        polkit_present = "unknown (no access)"
+    lines.append(f"polkit rule present: {polkit_present}")
+    lines.append(f"nmcli available: {available()}")
+    if not available():
+        return "\n".join(lines) + "\nnmcli not found — WiFi cannot be managed here."
+
+    steps: list[list[str]] = [
+        ["nmcli", "--version"],
+        ["nmcli", "radio", "wifi"],
+        ["nmcli", "device", "status"],
+        ["nmcli", "device", "wifi", "rescan"],
+    ]
+    for cmd in steps:
+        r = _run_capture(cmd)
+        lines.append("")
+        lines.append(f"$ {r['cmd']}   (rc={r['rc']})")
+        if r["out"]:
+            lines.append(str(r["out"]))
+        if r["err"]:
+            lines.append(f"[stderr] {r['err']}")
+
+    time.sleep(_RESCAN_SETTLE)
+    r = _run_capture(
+        ["nmcli", "-f", "IN-USE,SIGNAL,FREQ,SECURITY,SSID", "device", "wifi", "list"]
+    )
+    lines.append("")
+    lines.append(f"$ {r['cmd']}   (rc={r['rc']})")
+    if r["out"]:
+        lines.append(str(r["out"]))
+    if r["err"]:
+        lines.append(f"[stderr] {r['err']}")
+    lines.append("")
+    lines.append(f"networks parsed by the app: {len(scan())}")
+    return "\n".join(lines)
+
+
 def current_ssid() -> str | None:
     """SSID the device is currently associated with, or None if not on WiFi."""
     for net in scan():
@@ -258,21 +344,45 @@ def saved_networks() -> list[SavedNetwork]:
     return sorted(out, key=lambda n: (not n.active, n.ssid.lower()))
 
 
-def forget(name: str, script: Path) -> tuple[bool, str]:
+def _active_connection_names() -> set[str]:
+    """Names of the currently-active NetworkManager connections."""
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["nmcli", "-t", "-f", "NAME", "connection", "show", "--active"],
+            capture_output=True,
+            text=True,
+            timeout=_SCAN_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    if proc.returncode != 0:
+        return set()
+    return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+
+
+def forget(name: str) -> tuple[bool, str]:
     """Delete a saved network profile by its connection *name*.
 
-    Fails gracefully (never raises) when run off a real device.
+    Runs ``nmcli`` directly: the polkit rule installed with the app authorises
+    the service account to modify NetworkManager connections, so no sudo helper
+    is needed. Refuses to delete the connection the device is currently using —
+    doing so would drop the device off the network and lose the very access
+    path being used. Fails gracefully (never raises) when run off a real device.
     """
     name = name.strip()
     if not name:
         return False, "Geen netwerk opgegeven."
-    if shutil.which("sudo") is None:
-        return False, "sudo niet beschikbaar (alleen op het geïnstalleerde toestel)."
-    if not script.exists():
-        return False, f"WiFi-script niet gevonden op {script} (alleen op het toestel)."
+    if not available():
+        return False, "WiFi-beheer is op dit toestel niet beschikbaar."
+    if name in _active_connection_names():
+        return False, (
+            "Dit is het netwerk waarmee het toestel nu verbonden is. Verbind eerst "
+            "met een ander netwerk voordat je dit vergeet, anders raakt het toestel "
+            "offline."
+        )
     try:
-        proc = subprocess.run(  # noqa: S603 - argv list (no shell); arg validated
-            ["sudo", str(script), name],
+        proc = subprocess.run(  # noqa: S603 - argv list (no shell)
+            ["nmcli", "connection", "delete", name],
             capture_output=True,
             text=True,
             timeout=_CONNECT_TIMEOUT,
@@ -281,8 +391,8 @@ def forget(name: str, script: Path) -> tuple[bool, str]:
         return False, f"Kon netwerk niet verwijderen: {exc}"
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout).strip() or f"foutcode {proc.returncode}"
-        if _is_sudo_password_error(detail):
-            return False, _SUDO_HINT
+        if _is_polkit_denied(detail):
+            return False, _POLKIT_HINT
         return False, f"Verwijderen van '{name}' mislukt: {detail}"
     return True, f"Netwerk '{name}' verwijderd."
 

@@ -88,11 +88,24 @@ WantedBy=multi-user.target
 
 ## Changing WiFi later (from the web UI)
 Once the device is reachable, WiFi is also manageable from **Instellingen → WiFi**:
-it shows the current network, scans for nearby networks (signal strength, a lock
-icon for secured ones), and lets you pick one and enter its password. This is the
-same mechanism as the portal above (`set_wifi.sh`), handy when the school's WiFi
-changes. Note that switching to a different network briefly drops the page; the
-device is then reachable again at `viejoolbel.local`.
+a list of nearby networks (signal strength, a lock icon for secured ones, the
+connected one marked); selecting a secured network reveals an inline password
+field, and saved networks can be forgotten. Handy when the school's WiFi changes.
+Note that switching to a different network briefly drops the page; the device is
+then reachable again at `viejoolbel.local`.
+
+### How the app is allowed to manage WiFi
+WiFi is managed through **NetworkManager**, the standard on Raspberry Pi OS /
+Debian Bookworm. Because the app runs as an unprivileged service account with no
+login session, NetworkManager would otherwise only return cached scan results and
+refuse connection changes. The installer therefore drops a polkit rule
+(`deploy/polkit/10-viejoolbel-networkmanager.rules` →
+`/etc/polkit-1/rules.d/`) that authorises the `viejoolbel` account for
+`org.freedesktop.NetworkManager.*`, so `nmcli` scan/connect/forget work directly —
+no sudo helper. Joining from the onboarding portal still uses `set_wifi.sh` (run
+via sudo) because it also tears the access point down. The polkit rule is
+refreshed on every update, so it reaches existing devices through the update
+button.
 
 ## Discovering the device on a LAN
 Once on the school WiFi, the device advertises itself via mDNS/Avahi as

@@ -74,14 +74,16 @@
     <div>
       <label>Geluid</label>
       <select name="sound_id">
-        <option value="">(alleen relais)</option>
-        {% for snd in sounds %}<option value="{{ snd.id }}">{{ snd.name }}</option>{% endfor %}
+        <option value="">{{ '(alleen relais)' if relay_enabled else '(geen geluid)' }}</option>
+        {% for snd in sounds %}<option value="{{ snd.id }}" {{ 'selected' if snd.id == default_sound_id }}>{{ snd.name }}</option>{% endfor %}
       </select>
     </div>
     <div style="max-width:100px"><label>Duur (s)</label><input type="number" name="duration" value="8" min="1" max="120"></div>
     <div class="checks">
       <label class="check"><input type="checkbox" name="use_audio" checked> audio</label>
+      {% if relay_enabled %}
       <label class="check"><input type="checkbox" name="use_relay" checked> relais</label>
+      {% endif %}
     </div>
     <button class="btn btn-primary" type="submit">Toevoegen</button>
   </form>

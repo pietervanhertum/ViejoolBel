@@ -2,6 +2,23 @@
 {% block title %}Instellingen — de Viejool{% endblock %}
 {% block content %}
 
+<style>
+  .wifi-list { border:1px solid rgba(128,128,128,.35); border-radius:10px; overflow:hidden; }
+  .wifi-list:empty { display:none; }
+  .wifi-row { display:flex; align-items:center; gap:.6rem; padding:.6rem .8rem;
+              border-top:1px solid rgba(128,128,128,.22); }
+  .wifi-row:first-child { border-top:none; }
+  .wifi-row[role=button] { cursor:pointer; }
+  .wifi-row[role=button]:hover, .wifi-row[role=button]:focus { background:rgba(128,128,128,.10); outline:none; }
+  .wifi-row .ssid { flex:1 1 auto; font-weight:500; }
+  .wifi-row .wifi-ico { width:1.1em; text-align:center; opacity:.8; font-size:1.05rem; }
+  .wifi-row .meta { color:#777; font-size:.85rem; }
+  .wifi-expand { padding:.6rem .8rem .8rem; border-top:1px solid rgba(128,128,128,.22);
+                 background:rgba(128,128,128,.06); }
+  .wifi-expand input { width:100%; }
+  .btn-link { background:none; border:none; padding:0; color:inherit; text-decoration:underline; cursor:pointer; }
+</style>
+
 <div class="page-head"><h1>Instellingen</h1></div>
 
 {% if default_pw %}
@@ -40,44 +57,93 @@
 </section>
 
 <section class="card">
-  <h2>WiFi</h2>
+  <div class="field-row" style="justify-content:space-between;align-items:center">
+    <h2 style="margin:0">WiFi</h2>
+    <button class="btn" type="button" id="wifi-scan-btn" onclick="scanWifi()">Zoek netwerken</button>
+  </div>
   <p class="sub">Kies het WiFi-netwerk van de school en meld je aan met het
     wachtwoord. Handig bij de eerste installatie of als het netwerk verandert.</p>
   <p class="muted" id="wifi-current">Huidig netwerk: <span>laden…</span></p>
 
-  <form method="post" action="/api/wifi/connect" class="stack" onsubmit="return connectWifi(this)">
-    <div class="field-row">
-      <div style="flex:1 1 auto">
-        <label>Netwerk</label>
-        <select id="wifi-select" onchange="pickNetwork()">
-          <option value="">— Kies een netwerk of vul hieronder in —</option>
-        </select>
-      </div>
-      <button class="btn" type="button" id="wifi-scan-btn" onclick="scanWifi()">Zoek netwerken</button>
-    </div>
+  <div id="wifi-result" class="stack" style="margin:.4rem 0"></div>
+
+  <div id="wifi-list" class="wifi-list"><p class="muted">Laden…</p></div>
+
+  <button class="btn btn-link" type="button" id="wifi-hidden-toggle"
+          onclick="toggleHidden()" style="margin-top:.5rem">+ Netwerk handmatig invullen (of verborgen netwerk)…</button>
+  <form id="wifi-hidden-form" hidden class="stack" style="margin-top:.5rem"
+        onsubmit="return connectHidden(this)">
     <div>
       <label>Netwerknaam (SSID)</label>
-      <input name="ssid" id="wifi-ssid" placeholder="naam van het WiFi-netwerk" required autocomplete="off">
-      <p class="hint">Vul zelf in voor een verborgen netwerk dat niet in de lijst staat.</p>
+      <input name="ssid" placeholder="naam van het verborgen netwerk" required autocomplete="off">
     </div>
     <div>
-      <label>Wachtwoord</label>
-      <input type="password" name="password" id="wifi-pass" placeholder="WiFi-wachtwoord" autocomplete="off">
+      <label>Wachtwoord <span class="muted">(leeg laten voor een open netwerk)</span></label>
+      <input type="password" name="password" placeholder="WiFi-wachtwoord" autocomplete="off">
     </div>
     <div class="form-actions">
       <button class="btn btn-primary" type="submit">Verbind</button>
     </div>
   </form>
+
   <p class="hint">Let op: bij het overschakelen naar een ander netwerk kan deze
     pagina korte tijd onbereikbaar worden. Daarna is het toestel bereikbaar op
     <strong>viejoolbel.local</strong>.</p>
-  <div id="wifi-result" class="stack" style="margin-top:.6rem"></div>
 
-  <h3 style="margin:1rem 0 .3rem">Opgeslagen netwerken</h3>
+  <h3 style="margin:1.1rem 0 .3rem">Opgeslagen netwerken</h3>
   <p class="sub">Netwerken die het toestel onthoudt en vanzelf gebruikt zodra ze in
     bereik zijn (toegevoegd door te verbinden, of vooraf met <code>preseed_wifi.sh</code>).
     Verwijder er een die niet meer nodig is.</p>
   <div id="wifi-saved"><p class="muted">Laden…</p></div>
+
+  <details style="margin-top:1rem">
+    <summary style="cursor:pointer">Diagnose (voor support)</summary>
+    <p class="sub">Toont de ruwe WiFi-info van het toestel. Handig om te delen als
+      er geen netwerken verschijnen.</p>
+    <div class="form-actions">
+      <button class="btn" type="button" onclick="runDiagnostics()">Diagnose uitvoeren</button>
+      <button class="btn" type="button" onclick="copyDiagnostics()">Kopieer</button>
+    </div>
+    <pre id="wifi-diag" hidden style="max-height:320px;overflow:auto;background:#0f2740;
+         color:#e7eef7;padding:.6rem .8rem;border-radius:8px;font-size:.78rem;margin-top:.6rem;
+         white-space:pre-wrap"></pre>
+  </details>
+</section>
+
+<section class="card">
+  <h2>Onboarding-toegangspunt (AP)</h2>
+  <p class="sub">Als het toestel geen gekend WiFi-netwerk vindt, kan het zélf een
+    tijdelijk WiFi-netwerk openen zodat je de schoolwifi kunt instellen — handig
+    bij een eerste installatie zonder internet.</p>
+  <p class="muted" id="ap-status">Status laden…</p>
+
+  <label class="check" style="margin:.3rem 0">
+    <input type="checkbox" id="ap-enabled" onchange="setApEnabled(this.checked)">
+    Automatisch starten bij het opstarten als er geen gekend netwerk is
+  </label>
+
+  <div class="field-row" style="align-items:flex-end;margin:.3rem 0">
+    <div style="max-width:230px">
+      <label>Vangnet: open de AP na … minuten zonder netwerk</label>
+      <input type="number" id="ap-fallback" min="0" max="240" step="1" style="max-width:90px">
+    </div>
+    <button class="btn" type="button" onclick="setApFallback()">Opslaan</button>
+    <span class="hint" style="margin:0">0 = uit</span>
+  </div>
+
+  <p class="hint">Verbind met <strong>ViejoolBel-Setup</strong>
+    (wachtwoord <code>belsetup2025</code>) → <code>http://192.168.4.1:8080</code>.</p>
+
+  <div class="banner warn" style="margin:.6rem 0">
+    <strong>Test:</strong> tijdens een test schakelt het toestel over naar AP-modus
+    en <em>verbreekt deze pagina de verbinding</em>. Het toestel <strong>herstart
+    automatisch na 5 minuten</strong>, dus je raakt het nooit kwijt. Verbind binnen
+    die tijd met <strong>ViejoolBel-Setup</strong> om te testen.
+  </div>
+  <div class="form-actions">
+    <button class="btn" type="button" onclick="testAp()">Test AP nu (5 min)</button>
+  </div>
+  <div id="ap-result" class="stack" style="margin-top:.6rem"></div>
 </section>
 
 <section class="card">
@@ -147,11 +213,14 @@
 {% block scripts %}
 <script>
 let wifiNetworks = [];
+let wifiSelected = null;   // SSID of the row expanded for password entry
+let wifiSupported = true;
 
 async function loadWifiStatus() {
   const el = document.getElementById('wifi-current');
   try {
     const d = await (await fetch('/api/wifi/status')).json();
+    wifiSupported = d.supported;
     if (!d.supported) {
       el.innerHTML = 'WiFi-beheer is op dit toestel niet beschikbaar.';
       const btn = document.getElementById('wifi-scan-btn');
@@ -168,72 +237,123 @@ async function loadWifiStatus() {
 
 async function scanWifi() {
   const btn = document.getElementById('wifi-scan-btn');
-  const sel = document.getElementById('wifi-select');
+  const list = document.getElementById('wifi-list');
   btn.disabled = true;
   const old = btn.textContent;
   btn.textContent = 'Zoeken…';
+  list.innerHTML = '<p class="muted">Netwerken zoeken…</p>';
   try {
     const d = await (await fetch('/api/wifi/scan')).json();
+    wifiSupported = d.supported;
     wifiNetworks = d.networks || [];
-    sel.length = 1; // keep the placeholder
-    for (const n of wifiNetworks) {
-      const opt = document.createElement('option');
-      opt.value = n.ssid;
-      const bars = signalBars(n.signal);
-      opt.textContent = n.ssid + (n.secure ? ' 🔒' : '') + '  ' + bars + (n.active ? '  (verbonden)' : '');
-      sel.appendChild(opt);
-    }
-    if (!wifiNetworks.length) {
-      document.getElementById('wifi-result').innerHTML =
-        '<div class="banner warn">Geen netwerken gevonden. Probeer opnieuw of vul de netwerknaam zelf in.</div>';
-    } else {
-      document.getElementById('wifi-result').innerHTML = '';
-    }
+    renderNetworkList();
   } catch (e) {
-    document.getElementById('wifi-result').innerHTML =
-      '<div class="banner err">Zoeken mislukt: ' + e + '</div>';
+    list.innerHTML = '<div class="banner err">Zoeken mislukt: ' + escapeHtml(String(e)) + '</div>';
   }
   btn.disabled = false;
   btn.textContent = old;
 }
 
-function pickNetwork() {
-  const ssid = document.getElementById('wifi-select').value;
-  if (!ssid) return;
-  document.getElementById('wifi-ssid').value = ssid;
-  const net = wifiNetworks.find(n => n.ssid === ssid);
-  const pass = document.getElementById('wifi-pass');
-  // An open network needs no password; focus the password field for a secure one.
-  if (net && !net.secure) { pass.value = ''; pass.disabled = true; }
-  else { pass.disabled = false; pass.focus(); }
+function renderNetworkList() {
+  const list = document.getElementById('wifi-list');
+  if (!wifiSupported) {
+    list.innerHTML = '<p class="muted">WiFi-beheer is op dit toestel niet beschikbaar.</p>';
+    return;
+  }
+  if (!wifiNetworks.length) {
+    list.innerHTML = '<div class="banner warn">Geen netwerken gevonden. ' +
+      'Ben je verbonden via het instelnetwerk <strong>ViejoolBel-Setup</strong>? ' +
+      'Dan kan de radio niet scannen (die zendt het instelnetwerk uit). ' +
+      '<strong>Typ de schoolwifi hieronder zelf in</strong> en verbind — het toestel ' +
+      'schakelt dan over.</div>';
+    // Make manual entry the obvious next step.
+    const f = document.getElementById('wifi-hidden-form');
+    if (f) { f.hidden = false; const i = f.querySelector('input[name=ssid]'); if (i) i.focus(); }
+    return;
+  }
+  list.innerHTML = wifiNetworks.map((n, i) => {
+    const selected = wifiSelected === n.ssid && !n.active;
+    const rowAttrs = n.active ? 'class="wifi-row active"'
+      : 'class="wifi-row" role="button" tabindex="0" onclick="selectNetwork(' + i + ')"';
+    let html =
+      '<div ' + rowAttrs + '>' +
+        '<span class="wifi-ico" title="signaal ' + (n.signal || 0) + '%">' + signalIcon(n.signal) + '</span>' +
+        '<span class="ssid">' + escapeHtml(n.ssid) + (n.secure ? ' <span title="beveiligd">🔒</span>' : '') + '</span>' +
+        '<span class="meta">' + (n.active ? '<span class="badge">verbonden</span>' : '') + '</span>' +
+      '</div>';
+    if (selected) {
+      html +=
+        '<div class="wifi-expand">' +
+          (n.secure
+            ? '<label>Wachtwoord voor “' + escapeHtml(n.ssid) + '”</label>' +
+              '<input type="password" id="wifi-pass-' + i + '" autocomplete="off" placeholder="WiFi-wachtwoord">'
+            : '<p class="muted">Open netwerk — geen wachtwoord nodig.</p>') +
+          '<div class="form-actions" style="margin-top:.5rem">' +
+            '<button class="btn btn-primary" type="button" onclick="connectTo(' + i + ')">Verbind</button>' +
+            '<button class="btn" type="button" onclick="selectNetwork(-1)">Annuleer</button>' +
+          '</div>' +
+        '</div>';
+    }
+    return html;
+  }).join('');
+  if (wifiSelected) {
+    const inp = document.querySelector('.wifi-expand input');
+    if (inp) inp.focus();
+  }
 }
 
-async function connectWifi(form) {
-  const ssid = document.getElementById('wifi-ssid').value.trim();
+function selectNetwork(i) {
+  if (i < 0) { wifiSelected = null; renderNetworkList(); return; }
+  const n = wifiNetworks[i];
+  if (!n || n.active) return;
+  wifiSelected = (wifiSelected === n.ssid) ? null : n.ssid;
+  renderNetworkList();
+}
+
+async function connectTo(i) {
+  const n = wifiNetworks[i];
+  if (!n) return;
+  const pass = n.secure ? (document.getElementById('wifi-pass-' + i) || {}).value || '' : '';
+  if (n.secure && !pass) { alert('Vul het wachtwoord in.'); return; }
+  await doConnect(n.ssid, pass);
+}
+
+function toggleHidden() {
+  const f = document.getElementById('wifi-hidden-form');
+  f.hidden = !f.hidden;
+  if (!f.hidden) { const inp = f.querySelector('input[name=ssid]'); if (inp) inp.focus(); }
+}
+
+async function connectHidden(form) {
+  const ssid = form.querySelector('input[name=ssid]').value.trim();
+  const pass = form.querySelector('input[name=password]').value;
   if (!ssid) { alert('Geef een netwerknaam (SSID) op.'); return false; }
-  if (!confirm('Verbinden met "' + ssid + '"? Deze pagina kan even onbereikbaar worden.')) return false;
-  const box = document.getElementById('wifi-result');
-  const btn = form.querySelector('button[type=submit]');
-  if (btn) btn.disabled = true;
-  box.innerHTML = '<p class="muted">Bezig met verbinden…</p>';
-  try {
-    const resp = await fetch('/api/wifi/connect', { method: 'POST', body: buildBody(form) });
-    const d = await resp.json();
-    box.innerHTML = '<div class="banner ' + (resp.ok ? 'ok' : 'err') + '">' +
-      escapeHtml(d.detail || (resp.ok ? 'Verbonden.' : 'Verbinden mislukt.')) + '</div>';
-    if (resp.ok) { loadWifiStatus(); loadSavedNetworks(); }
-  } catch (e) {
-    // A dropped connection here often means the switch is underway — say so.
-    box.innerHTML = '<div class="banner warn">Verbinding met deze pagina verbroken — ' +
-      'het toestel schakelt waarschijnlijk over. Zoek het straks op viejoolbel.local.</div>';
-  }
-  if (btn) btn.disabled = false;
+  await doConnect(ssid, pass);
   return false;
 }
 
-function signalBars(signal) {
+async function doConnect(ssid, password) {
+  if (!confirm('Verbinden met “' + ssid + '”? Deze pagina kan even onbereikbaar worden.')) return;
+  const box = document.getElementById('wifi-result');
+  box.innerHTML = '<p class="muted">Bezig met verbinden met “' + escapeHtml(ssid) + '”…</p>';
+  const body = new FormData();
+  body.append('ssid', ssid);
+  body.append('password', password);
+  try {
+    const resp = await fetch('/api/wifi/connect', { method: 'POST', body });
+    const d = await resp.json();
+    box.innerHTML = '<div class="banner ' + (resp.ok ? 'ok' : 'err') + '">' +
+      escapeHtml(d.detail || (resp.ok ? 'Verbonden.' : 'Verbinden mislukt.')) + '</div>';
+    if (resp.ok) { wifiSelected = null; loadWifiStatus(); loadSavedNetworks(); scanWifi(); }
+  } catch (e) {
+    box.innerHTML = '<div class="banner warn">Verbinding met deze pagina verbroken — ' +
+      'het toestel schakelt waarschijnlijk over. Zoek het straks op viejoolbel.local.</div>';
+  }
+}
+
+function signalIcon(signal) {
   const n = Math.max(0, Math.min(4, Math.round((signal || 0) / 25)));
-  return '▂▄▆█'.slice(0, n) || '·';
+  return '▁▂▄▆█'.charAt(n) || '▁';
 }
 
 async function loadSavedNetworks() {
@@ -243,21 +363,23 @@ async function loadSavedNetworks() {
     if (!d.supported) { box.innerHTML = '<p class="muted">Niet beschikbaar op dit toestel.</p>'; return; }
     const nets = d.networks || [];
     if (!nets.length) { box.innerHTML = '<p class="muted">Nog geen opgeslagen netwerken.</p>'; return; }
-    box.innerHTML = nets.map(n =>
-      '<div class="field-row" style="align-items:center;justify-content:space-between;' +
-      'border-top:1px solid var(--line,#e2e2e2);padding:.4rem 0">' +
-      '<span>' + escapeHtml(n.ssid) + (n.active ? ' <span class="badge">verbonden</span>' : '') + '</span>' +
-      '<button class="btn btn-danger" type="button" onclick="forgetNetwork(' +
-      JSON.stringify(n.name).replace(/"/g, '&quot;') + ')">Vergeten</button>' +
+    box.innerHTML = '<div class="wifi-list">' + nets.map(n =>
+      '<div class="wifi-row active">' +
+        '<span class="ssid">' + escapeHtml(n.ssid) +
+          (n.active ? ' <span class="badge">verbonden</span>' : '') + '</span>' +
+        (n.active
+          ? '<span class="meta" title="Verbind eerst met een ander netwerk voor je dit vergeet.">in gebruik</span>'
+          : '<button class="btn btn-danger" type="button" onclick="forgetNetwork(' +
+            JSON.stringify(n.name).replace(/"/g, '&quot;') + ')">Vergeten</button>') +
       '</div>'
-    ).join('');
+    ).join('') + '</div>';
   } catch (e) {
     box.innerHTML = '<p class="muted">Kon opgeslagen netwerken niet laden.</p>';
   }
 }
 
 async function forgetNetwork(name) {
-  if (!confirm('Netwerk "' + name + '" vergeten? Het toestel zal er niet meer automatisch mee verbinden.')) return;
+  if (!confirm('Netwerk “' + name + '” vergeten? Het toestel zal er niet meer automatisch mee verbinden.')) return;
   const body = new FormData(); body.append('name', name);
   try {
     const resp = await fetch('/api/wifi/forget', { method: 'POST', body });
@@ -266,12 +388,101 @@ async function forgetNetwork(name) {
   } catch (e) { alert('Netwerkfout: ' + e); }
 }
 
+async function runDiagnostics() {
+  const box = document.getElementById('wifi-diag');
+  box.hidden = false;
+  box.textContent = 'Bezig… (dit duurt een paar seconden)';
+  try {
+    const d = await (await fetch('/api/wifi/diagnostics')).json();
+    box.textContent = d.report || '(geen output)';
+  } catch (e) {
+    box.textContent = 'Diagnose mislukt: ' + e;
+  }
+}
+
+async function copyDiagnostics() {
+  const box = document.getElementById('wifi-diag');
+  if (box.hidden || !box.textContent) { alert('Voer eerst de diagnose uit.'); return; }
+  try { await navigator.clipboard.writeText(box.textContent); showToast('Gekopieerd ✓'); }
+  catch (e) { alert('Kon niet kopiëren; selecteer de tekst handmatig.'); }
+}
+
+async function loadApStatus() {
+  const el = document.getElementById('ap-status');
+  const cb = document.getElementById('ap-enabled');
+  try {
+    const d = await (await fetch('/api/ap/status')).json();
+    if (!d.supported) {
+      el.textContent = 'AP-beheer is op dit toestel niet beschikbaar.';
+      cb.disabled = true;
+      return;
+    }
+    cb.checked = !!d.enabled;
+    const fb = document.getElementById('ap-fallback');
+    if (fb && document.activeElement !== fb) fb.value = (d.fallback_minutes ?? 15);
+    el.innerHTML = 'Automatisch starten: <strong>' + (d.enabled ? 'aan' : 'uit') + '</strong>' +
+      ' · nu actief: <strong>' + (d.active || d.hostapd_running ? 'ja' : 'nee') + '</strong>' +
+      (d.installed ? '' : ' · <span class="muted">(nog niet geïnstalleerd — wordt bij inschakelen gezet)</span>');
+  } catch (e) {
+    el.textContent = 'Kon AP-status niet laden.';
+  }
+}
+
+async function setApFallback() {
+  const mins = document.getElementById('ap-fallback').value;
+  const body = new FormData(); body.append('minutes', mins);
+  const box = document.getElementById('ap-result');
+  try {
+    const resp = await fetch('/api/ap/fallback', { method: 'POST', body });
+    const d = await resp.json();
+    if (!resp.ok) { box.innerHTML = '<div class="banner err">' + escapeHtml(d.detail || 'Mislukt') + '</div>'; return; }
+    box.innerHTML = '<div class="banner ok">Vangnet: ' +
+      (d.fallback_minutes > 0 ? ('na ' + d.fallback_minutes + ' min zonder netwerk') : 'uit') + '.</div>';
+  } catch (e) {
+    box.innerHTML = '<div class="banner err">Netwerkfout: ' + escapeHtml(String(e)) + '</div>';
+  }
+}
+
+async function setApEnabled(on) {
+  const body = new FormData(); body.append('enabled', on ? 'true' : 'false');
+  const box = document.getElementById('ap-result');
+  try {
+    const resp = await fetch('/api/ap/enabled', { method: 'POST', body });
+    const d = await resp.json();
+    box.innerHTML = '<div class="banner ' + (resp.ok ? 'ok' : 'err') + '">' +
+      escapeHtml(d.detail || (resp.ok ? 'Opgeslagen.' : 'Mislukt.')) + '</div>';
+    loadApStatus();
+  } catch (e) {
+    box.innerHTML = '<div class="banner err">Netwerkfout: ' + escapeHtml(String(e)) + '</div>';
+  }
+}
+
+async function testAp() {
+  if (!confirm('AP-test starten? Deze pagina verliest de verbinding en het toestel ' +
+    'herstart automatisch na 5 minuten. Verbind je telefoon met ViejoolBel-Setup om te testen.')) return;
+  const box = document.getElementById('ap-result');
+  box.innerHTML = '<p class="muted">AP-test starten…</p>';
+  const body = new FormData(); body.append('minutes', '5');
+  try {
+    const resp = await fetch('/api/ap/test', { method: 'POST', body });
+    const d = await resp.json();
+    box.innerHTML = '<div class="banner ' + (resp.ok ? 'ok' : 'err') + '">' +
+      escapeHtml(d.detail || (resp.ok ? 'Gestart.' : 'Mislukt.')) + '</div>';
+  } catch (e) {
+    box.innerHTML = '<div class="banner warn">Verbinding met deze pagina verbroken — ' +
+      'de AP-test is waarschijnlijk gestart. Verbind met ViejoolBel-Setup; het toestel ' +
+      'herstart vanzelf na 5 minuten.</div>';
+  }
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-window.addEventListener('DOMContentLoaded', () => { loadWifiStatus(); scanWifi(); loadSavedNetworks(); });
+window.addEventListener('DOMContentLoaded', () => {
+  loadWifiStatus(); scanWifi(); loadSavedNetworks(); loadApStatus();
+});
 
 async function confirmRestore(form) {
   if (!confirm('Weet je het zeker? Dit vervangt je huidige roosters, weekindeling en kalender.'))
