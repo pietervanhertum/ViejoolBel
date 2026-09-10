@@ -13,6 +13,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   network changes. Backed by `GET /api/wifi/scan`, `GET /api/wifi/status` and
   `POST /api/wifi/connect` (new `viejoolbel/wifi.py`), which reuse the existing
   scoped `set_wifi.sh` sudoers rule and degrade cleanly on a non-Pi machine.
+- **Saved WiFi networks are listed and manageable in Instellingen.** A new list
+  under WiFi shows every network the device remembers (added by connecting, or
+  ahead of time by `preseed_wifi.sh`), marks the active one, and lets you forget
+  one you no longer need. Backed by `GET /api/wifi/saved` and
+  `POST /api/wifi/forget`, with a new scoped `forget_wifi.sh` sudoers rule for the
+  privileged delete.
+
+### Fixed
+- **The WiFi scan only showed the currently-connected network.** `nmcli device
+  wifi list` returns a cached scan, so nearby networks the device was not
+  associated with were missing from the picker. The scan now forces a fresh
+  rescan (`--rescan yes`) and falls back to the cached list when NetworkManager
+  rate-limits it.
 
 ## [0.2.0] - 2026-09-09
 

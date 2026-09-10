@@ -150,6 +150,98 @@ def current_ssid() -> str | None:
     return None
 
 
+@dataclass(frozen=True)
+class SavedNetwork:
+    name: str  # NetworkManager connection id — the handle used to forget it
+    ssid: str  # the WiFi SSID (for display)
+    active: bool  # currently in use
+
+    def as_dict(self) -> dict[str, object]:
+        return {"name": self.name, "ssid": self.ssid, "active": self.active}
+
+
+def _connection_ssid(ident: str) -> str:
+    """Look up the SSID stored in a saved connection profile (empty if none)."""
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["nmcli", "-t", "-g", "802-11-wireless.ssid", "connection", "show", ident],
+            capture_output=True,
+            text=True,
+            timeout=_SCAN_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def saved_networks() -> list[SavedNetwork]:
+    """Return the WiFi networks stored on the device (NetworkManager profiles).
+
+    These are the networks the device will join on its own — added here by
+    connecting, or ahead of time by ``preseed_wifi.sh``. Returns an empty list
+    when WiFi cannot be managed here or the query fails.
+    """
+    if not available():
+        return []
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["nmcli", "-t", "-f", "NAME,UUID,TYPE,DEVICE", "connection", "show"],
+            capture_output=True,
+            text=True,
+            timeout=_SCAN_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("Listing saved networks failed: %s", exc)
+        return []
+    if proc.returncode != 0:
+        log.warning("Listing saved networks returned %s: %s", proc.returncode, proc.stderr.strip())
+        return []
+
+    out: list[SavedNetwork] = []
+    for line in proc.stdout.splitlines():
+        if not line.strip():
+            continue
+        name, uuid, conn_type, device = (_split_terse(line) + ["", "", "", ""])[:4]
+        if conn_type.strip() != "802-11-wireless":
+            continue
+        ssid = _connection_ssid(uuid) or name.removeprefix("viejoolbel-")
+        out.append(
+            SavedNetwork(
+                name=name,
+                ssid=ssid,
+                active=device.strip() not in ("", "--"),
+            )
+        )
+    return sorted(out, key=lambda n: (not n.active, n.ssid.lower()))
+
+
+def forget(name: str, script: Path) -> tuple[bool, str]:
+    """Delete a saved network profile by its connection *name*.
+
+    Fails gracefully (never raises) when run off a real device.
+    """
+    name = name.strip()
+    if not name:
+        return False, "Geen netwerk opgegeven."
+    if shutil.which("sudo") is None:
+        return False, "sudo niet beschikbaar (alleen op het geïnstalleerde toestel)."
+    if not script.exists():
+        return False, f"WiFi-script niet gevonden op {script} (alleen op het toestel)."
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list (no shell); arg validated
+            ["sudo", str(script), name],
+            capture_output=True,
+            text=True,
+            timeout=_CONNECT_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"Kon netwerk niet verwijderen: {exc}"
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout).strip() or f"foutcode {proc.returncode}"
+        return False, f"Verwijderen van '{name}' mislukt: {detail}"
+    return True, f"Netwerk '{name}' verwijderd."
+
+
 def connect(ssid: str, password: str, script: Path) -> tuple[bool, str]:
     """Join *ssid* using the privileged helper and return ``(ok, message)``.
 
