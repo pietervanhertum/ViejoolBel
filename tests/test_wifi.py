@@ -1,0 +1,99 @@
+"""Tests for WiFi scan/status/connect (FR-19)."""
+
+from __future__ import annotations
+
+import subprocess
+
+import pytest
+from fastapi.testclient import TestClient
+
+from viejoolbel import wifi
+
+_SCAN_OUTPUT = "\n".join(
+    [
+        "yes:72:WPA2:SchoolWiFi",
+        "no:55:WPA2:Buren\\:Gastnet",  # SSID containing an escaped colon
+        "no:40::OpenNet",  # open network (empty SECURITY)
+        "no:90:WPA2:SchoolWiFi",  # weaker/stronger duplicate of the active one
+        "no:30:WPA2:",  # hidden network (no SSID) — skipped
+    ]
+)
+
+
+def _fake_run(output: str, returncode: int = 0):
+    def run(*args, **kwargs):
+        return subprocess.CompletedProcess(args, returncode, stdout=output, stderr="")
+
+    return run
+
+
+def test_split_terse_handles_escaped_colons():
+    assert wifi._split_terse(r"yes:55:WPA2:Buren\:Gastnet") == [
+        "yes",
+        "55",
+        "WPA2",
+        "Buren:Gastnet",
+    ]
+
+
+def test_scan_parses_dedupes_and_orders(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: True)
+    monkeypatch.setattr(wifi.subprocess, "run", _fake_run(_SCAN_OUTPUT))
+    nets = wifi.scan()
+    ssids = [n.ssid for n in nets]
+    assert ssids == ["SchoolWiFi", "Buren:Gastnet", "OpenNet"]  # active first, then by signal
+    active = next(n for n in nets if n.ssid == "SchoolWiFi")
+    assert active.active is True and active.secure is True
+    assert next(n for n in nets if n.ssid == "OpenNet").secure is False
+
+
+def test_scan_empty_when_unsupported(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: False)
+    assert wifi.scan() == []
+
+
+def test_current_ssid_returns_active(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: True)
+    monkeypatch.setattr(wifi.subprocess, "run", _fake_run(_SCAN_OUTPUT))
+    assert wifi.current_ssid() == "SchoolWiFi"
+
+
+def test_connect_requires_ssid(tmp_path):
+    ok, msg = wifi.connect("  ", "pw", tmp_path / "set_wifi.sh")
+    assert ok is False and "SSID" in msg
+
+
+def test_connect_fails_gracefully_without_script(tmp_path):
+    # No privileged helper on a dev/test machine → clear failure, no launch.
+    ok, msg = wifi.connect("SchoolWiFi", "pw", tmp_path / "missing.sh")
+    assert ok is False and "script" in msg.lower()
+
+
+def test_scan_endpoint(auth_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: True)
+    monkeypatch.setattr(wifi.subprocess, "run", _fake_run(_SCAN_OUTPUT))
+    body = auth_client.get("/api/wifi/scan").json()
+    assert body["supported"] is True
+    assert body["networks"][0]["ssid"] == "SchoolWiFi"
+
+
+def test_status_endpoint(auth_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: False)
+    body = auth_client.get("/api/wifi/status").json()
+    assert body["supported"] is False and body["current_ssid"] is None
+
+
+def test_connect_endpoint_rejects_empty_ssid(auth_client: TestClient):
+    assert auth_client.post("/api/wifi/connect", data={"ssid": " "}).status_code == 400
+
+
+def test_connect_endpoint_reports_failure(auth_client: TestClient):
+    # Without the privileged script the endpoint reports a 502 + ok=False.
+    resp = auth_client.post("/api/wifi/connect", data={"ssid": "SchoolWiFi", "password": "pw"})
+    assert resp.status_code == 502
+    assert resp.json()["ok"] is False
+
+
+def test_wifi_endpoints_require_login(client: TestClient):
+    assert client.get("/api/wifi/scan").status_code == 401
+    assert client.post("/api/wifi/connect", data={"ssid": "x"}).status_code == 401

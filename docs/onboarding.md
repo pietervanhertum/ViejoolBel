@@ -86,6 +86,14 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 ```
 
+## Changing WiFi later (from the web UI)
+Once the device is reachable, WiFi is also manageable from **Instellingen → WiFi**:
+it shows the current network, scans for nearby networks (signal strength, a lock
+icon for secured ones), and lets you pick one and enter its password. This is the
+same mechanism as the portal above (`set_wifi.sh`), handy when the school's WiFi
+changes. Note that switching to a different network briefly drops the page; the
+device is then reachable again at `viejoolbel.local`.
+
 ## Discovering the device on a LAN
 Once on the school WiFi, the device advertises itself via mDNS/Avahi as
 `viejoolbel.local`. If mDNS is blocked, find its IP from the router or via the

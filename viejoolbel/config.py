@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     releases_dir: Path = Field(default=Path("/opt/viejoolbel/releases"))
     # Privileged helper that performs the atomic swap + rollback (see updater.py).
     update_script: Path = Field(default=Path("/opt/viejoolbel/current/deploy/apply_update.sh"))
+    # Privileged helper that joins a WiFi network + tears down the onboarding AP
+    # (see wifi.py). Invoked via the scoped sudoers rule.
+    wifi_script: Path = Field(default=Path("/opt/viejoolbel/current/deploy/set_wifi.sh"))
     # Optional GitHub token (read-only) so the update check + clone work on a
     # PRIVATE repository. Stored in /etc/viejoolbel/viejoolbel.env. See
     # docs/github-auth.md.
