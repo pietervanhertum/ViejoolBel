@@ -87,14 +87,19 @@ Onderaan bij **"Wachtwoord wijzigen"** typ je een nieuw wachtwoord en klik je op
 | ⛔ "clock: klok is niet ingesteld" | Toestel had geen internet/klok. Verwittig de beheerder (RTC of internet nodig). |
 | ⛔ "rings: mislukte bel" | Geluid of bel deed het niet. Doe een **Zelftest**; check speaker/bekabeling. |
 | 🟠 "disk: weinig ruimte" | Verwittig de beheerder. |
-| Webpagina laadt niet | Zit je op de juiste wifi? Herstart eventueel het toestel (stekker 10 s uit). |
+| Webpagina laadt niet | Zit je op de juiste wifi? Was er net een internet-/wifi-storing? Wacht dan enkele minuten: het toestel probeert zichzelf te herstellen en herstart om opnieuw te verbinden. Blijft het weg, herstart het toestel (stekker 10 s uit). |
 | De bel ging niet af | Stond **"Vandaag stil"** aan? Is vandaag als **gesloten** gemarkeerd? |
 
 ## Belangrijk om te weten
 
 - ✅ Na een **stroomonderbreking** start de bel **vanzelf** weer op.
+- ✅ Valt het **internet of de wifi** even weg? De bel blijft **gewoon rinkelen** —
+  het rooster staat lokaal op het toestel en heeft geen internet nodig. Duurt de
+  storing langer, dan **herstelt het toestel zichzelf**: het herstart en verbindt
+  opnieuw, zonder dat er iemand ter plaatse iets moet doen.
 - ✅ Het systeem controleert zichzelf en **waarschuwt de beheerder** automatisch
-  als er iets misgaat (indien ingesteld).
+  als er iets misgaat, en stuurt ook een bericht **wanneer het (opnieuw) opstart**
+  (indien ingesteld).
 - ❗ Een bel die je mist, wordt **niet** later ingehaald (een te late bel is
   verwarrender dan geen bel).
 

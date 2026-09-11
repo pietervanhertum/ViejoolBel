@@ -127,9 +127,16 @@
       <label>Vangnet: open de AP na … minuten zonder netwerk</label>
       <input type="number" id="ap-fallback" min="0" max="240" step="1" style="max-width:90px">
     </div>
+    <div style="max-width:230px">
+      <label>Herstart daarna vanzelf na … minuten</label>
+      <input type="number" id="ap-recovery" min="0" max="60" step="1" style="max-width:90px">
+    </div>
     <button class="btn" type="button" onclick="setApFallback()">Opslaan</button>
     <span class="hint" style="margin:0">0 = uit</span>
   </div>
+  <p class="hint">Zelf-herstel: na een tijdelijke storing herstart het toestel
+    vanzelf en probeert het opnieuw op de schoolwifi — geen plaatsbezoek nodig.
+    De bel blijft ondertussen gewoon lokaal rinkelen.</p>
 
   <p class="hint">Verbind met <strong>ViejoolBel-Setup</strong>
     (wachtwoord <code>belsetup2025</code>) → <code>http://192.168.4.1:8080</code>.</p>
@@ -161,11 +168,21 @@
       <label>Heartbeat-URL (dead man's switch)</label>
       <input name="heartbeat_url" value="{{ heartbeat_url }}" placeholder="https://hc-ping.com/xxxxxxxx">
     </div>
+    <label class="check" style="margin:.2rem 0">
+      <input type="checkbox" name="notify_on_start" {% if notify_on_start %}checked{% endif %}>
+      Stuur een info-melding bij het opstarten (met tijd, uptime en WiFi-netwerk)
+    </label>
     <div class="form-actions">
       <button class="btn btn-primary" type="submit">Opslaan</button>
       <button class="btn" type="button" onclick="apiPost('/api/notify-test')">Stuur testmelding</button>
     </div>
   </form>
+
+  <h3 style="margin:1rem 0 .3rem">Recente systeemgebeurtenissen</h3>
+  <p class="sub">Duurzaam bewaard (overleeft een herstart) — handig voor een
+    post-mortem: hier zie je wanneer het vangnet de AP opende of een controle
+    faalde.</p>
+  <div id="events-list" class="muted">Laden…</div>
 </section>
 
 <section class="card">
@@ -420,6 +437,8 @@ async function loadApStatus() {
     cb.checked = !!d.enabled;
     const fb = document.getElementById('ap-fallback');
     if (fb && document.activeElement !== fb) fb.value = (d.fallback_minutes ?? 15);
+    const rec = document.getElementById('ap-recovery');
+    if (rec && document.activeElement !== rec) rec.value = (d.recovery_minutes ?? 10);
     el.innerHTML = 'Automatisch starten: <strong>' + (d.enabled ? 'aan' : 'uit') + '</strong>' +
       ' · nu actief: <strong>' + (d.active || d.hostapd_running ? 'ja' : 'nee') + '</strong>' +
       (d.installed ? '' : ' · <span class="muted">(nog niet geïnstalleerd — wordt bij inschakelen gezet)</span>');
@@ -430,14 +449,17 @@ async function loadApStatus() {
 
 async function setApFallback() {
   const mins = document.getElementById('ap-fallback').value;
-  const body = new FormData(); body.append('minutes', mins);
+  const rec = document.getElementById('ap-recovery').value;
+  const body = new FormData(); body.append('minutes', mins); body.append('recovery_minutes', rec);
   const box = document.getElementById('ap-result');
   try {
     const resp = await fetch('/api/ap/fallback', { method: 'POST', body });
     const d = await resp.json();
     if (!resp.ok) { box.innerHTML = '<div class="banner err">' + escapeHtml(d.detail || 'Mislukt') + '</div>'; return; }
     box.innerHTML = '<div class="banner ok">Vangnet: ' +
-      (d.fallback_minutes > 0 ? ('na ' + d.fallback_minutes + ' min zonder netwerk') : 'uit') + '.</div>';
+      (d.fallback_minutes > 0 ? ('na ' + d.fallback_minutes + ' min zonder netwerk') : 'uit') +
+      (d.recovery_minutes > 0 ? (' · zelf-herstel na ' + d.recovery_minutes + ' min') : ' · zelf-herstel uit') +
+      '.</div>';
   } catch (e) {
     box.innerHTML = '<div class="banner err">Netwerkfout: ' + escapeHtml(String(e)) + '</div>';
   }
@@ -480,8 +502,36 @@ function escapeHtml(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+const EVENT_LABELS = {
+  ap_fallback: 'Vangnet: AP geopend',
+  health_fault: 'Probleem gedetecteerd',
+  health_recovered: 'Hersteld',
+  service_started: 'Opgestart',
+};
+
+async function loadEvents() {
+  const el = document.getElementById('events-list');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/events?limit=30')).json();
+    const evs = d.events || [];
+    if (!evs.length) { el.textContent = 'Nog geen gebeurtenissen.'; return; }
+    el.innerHTML = '<ul class="stack" style="padding-left:1.1rem;margin:0">' + evs.map(e => {
+      const when = new Date(e.ts).toLocaleString('nl-BE');
+      const label = EVENT_LABELS[e.kind] || e.kind;
+      const cls = e.level === 'error' ? 'badge-alarm'
+        : (e.level === 'warn' ? 'badge-relay' : 'badge-default');
+      return '<li><span class="badge ' + cls + '">' + escapeHtml(label) + '</span> ' +
+        '<span class="muted">' + escapeHtml(when) + '</span><br>' +
+        escapeHtml(e.detail) + '</li>';
+    }).join('') + '</ul>';
+  } catch (e) {
+    el.textContent = 'Kon gebeurtenissen niet laden.';
+  }
+}
+
 window.addEventListener('DOMContentLoaded', () => {
-  loadWifiStatus(); scanWifi(); loadSavedNetworks(); loadApStatus();
+  loadWifiStatus(); scanWifi(); loadSavedNetworks(); loadApStatus(); loadEvents();
 });
 
 async function confirmRestore(form) {

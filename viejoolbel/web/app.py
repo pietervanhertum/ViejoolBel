@@ -29,6 +29,7 @@ from ..models import (
     CalendarRule,
     CalendarRuleKind,
     DayType,
+    EventLog,
     RingLog,
     RingSource,
     Sound,
@@ -375,6 +376,9 @@ def create_app(
         with session_scope() as s:
             webhook_url = get_setting(s, "notify_webhook_url", settings.notify_webhook_url)
             heartbeat_url = get_setting(s, "heartbeat_url", settings.heartbeat_url)
+            notify_on_start = get_setting(
+                s, "notify_on_start", "1" if settings.notify_on_start else "0"
+            ) not in ("0", "false", "False", "")
             volume_db = int(get_setting(s, "volume_db", "0") or "0")
             default_pw = auth.uses_default_password(s)
         return _page(
@@ -383,6 +387,7 @@ def create_app(
             "instellingen",
             webhook_url=webhook_url,
             heartbeat_url=heartbeat_url,
+            notify_on_start=notify_on_start,
             volume_db=volume_db,
             timezone=settings.timezone,
             default_pw=default_pw,
@@ -418,6 +423,31 @@ def create_app(
         report = monitor.evaluate_once()
         return JSONResponse(report.as_dict())
 
+    @app.get("/api/events")
+    def events(_: LoggedIn, limit: int = 50) -> JSONResponse:
+        """Durable operational event log (health transitions, offline safety-net),
+        newest first — the record for a post-mortem after the device recovers."""
+        limit = max(1, min(500, limit))
+        tz = scheduler.now().tzinfo
+        with session_scope() as s:
+            rows = list(
+                s.scalars(select(EventLog).order_by(EventLog.ts.desc()).limit(limit))
+            )
+        return JSONResponse(
+            {
+                "events": [
+                    {
+                        # Stored naive UTC; show in the device timezone like the rest.
+                        "ts": r.ts.replace(tzinfo=dt.UTC).astimezone(tz).isoformat(),
+                        "kind": r.kind,
+                        "level": r.level,
+                        "detail": r.detail,
+                    }
+                    for r in rows
+                ]
+            }
+        )
+
     @app.get("/api/notify-settings")
     def get_notify_settings(_: LoggedIn) -> JSONResponse:
         with session_scope() as s:
@@ -427,6 +457,10 @@ def create_app(
                         s, "notify_webhook_url", settings.notify_webhook_url
                     ),
                     "heartbeat_url": get_setting(s, "heartbeat_url", settings.heartbeat_url),
+                    "notify_on_start": get_setting(
+                        s, "notify_on_start", "1" if settings.notify_on_start else "0"
+                    )
+                    not in ("0", "false", "False", ""),
                 }
             )
 
@@ -435,10 +469,12 @@ def create_app(
         _: LoggedIn,
         notify_webhook_url: Annotated[str, Form()] = "",
         heartbeat_url: Annotated[str, Form()] = "",
+        notify_on_start: Annotated[bool, Form()] = True,
     ) -> JSONResponse:
         with session_scope() as s:
             set_setting(s, "notify_webhook_url", notify_webhook_url.strip())
             set_setting(s, "heartbeat_url", heartbeat_url.strip())
+            set_setting(s, "notify_on_start", "1" if notify_on_start else "0")
         return JSONResponse({"ok": True})
 
     @app.post("/api/notify-test")
@@ -962,19 +998,37 @@ def create_app(
         data = ap.status(settings.ap_control_script)
         with session_scope() as s:
             raw = get_setting(s, "ap_fallback_minutes", str(settings.ap_fallback_minutes))
+            raw_rec = get_setting(
+                s, "ap_fallback_recovery_minutes", str(settings.ap_fallback_recovery_minutes)
+            )
         try:
             data["fallback_minutes"] = int(raw)
         except (TypeError, ValueError):
             data["fallback_minutes"] = settings.ap_fallback_minutes
+        try:
+            data["recovery_minutes"] = int(raw_rec)
+        except (TypeError, ValueError):
+            data["recovery_minutes"] = settings.ap_fallback_recovery_minutes
         return JSONResponse(data)
 
     @app.post("/api/ap/fallback")
-    def ap_set_fallback(_: LoggedIn, minutes: Annotated[int, Form()]) -> JSONResponse:
+    def ap_set_fallback(
+        _: LoggedIn,
+        minutes: Annotated[int, Form()],
+        recovery_minutes: Annotated[int | None, Form()] = None,
+    ) -> JSONResponse:
         if not 0 <= minutes <= 240:
             raise HTTPException(400, "minuten moet tussen 0 en 240 liggen")
+        if recovery_minutes is not None and not 0 <= recovery_minutes <= 60:
+            raise HTTPException(400, "herstart-minuten moet tussen 0 en 60 liggen")
         with session_scope() as s:
             set_setting(s, "ap_fallback_minutes", str(minutes))
-        return JSONResponse({"ok": True, "fallback_minutes": minutes})
+            if recovery_minutes is not None:
+                set_setting(s, "ap_fallback_recovery_minutes", str(recovery_minutes))
+        body = {"ok": True, "fallback_minutes": minutes}
+        if recovery_minutes is not None:
+            body["recovery_minutes"] = recovery_minutes
+        return JSONResponse(body)
 
     @app.post("/api/ap/enabled")
     def ap_set_enabled(_: LoggedIn, enabled: Annotated[bool, Form()]) -> JSONResponse:

@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     # Safety net: if the device has no network for this many minutes, open the
     # onboarding AP so it can be recovered on-site. 0 disables it. UI-editable.
     ap_fallback_minutes: int = 15
+    # Self-heal: after the safety net opens the AP, reboot after this many minutes
+    # so the device retries its WiFi on its own (a transient outage then needs no
+    # site visit). 0 keeps the AP up until a manual reboot (legacy). UI-editable.
+    ap_fallback_recovery_minutes: int = 10
     # Optional GitHub token (read-only) so the update check + clone work on a
     # PRIVATE repository. Stored in /etc/viejoolbel/viejoolbel.env. See
     # docs/github-auth.md.
@@ -78,6 +82,9 @@ class Settings(BaseSettings):
     # this is what catches a device that is fully offline or powered down.
     heartbeat_url: str = ""
     heartbeat_interval_seconds: float = 900.0
+    # Send an "info" webhook notice when the service starts (with time, uptime and
+    # the connected WiFi network). Also makes reboots visible. UI-editable.
+    notify_on_start: bool = True
     # Minimum plausible year; a system clock below this means the clock is unset
     # (no RTC, no NTP) and rings would be wrong (see docs/hardware.md).
     min_plausible_year: int = 2024
