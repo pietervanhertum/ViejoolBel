@@ -150,6 +150,7 @@ class Setting(Base):
 EV_HEALTH_FAULT = "health_fault"
 EV_HEALTH_RECOVERED = "health_recovered"
 EV_AP_FALLBACK = "ap_fallback"
+EV_SERVICE_STARTED = "service_started"
 
 
 class EventLog(Base):

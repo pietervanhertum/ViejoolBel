@@ -19,11 +19,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   and retries its WiFi on its own — a transient outage no longer needs a site
   visit. The reboot is armed before the radio is touched, so recovery happens even
   if the AP fails to come up. Set it in Instellingen → AP.
-- **Durable event log for post-mortems.** Health transitions (fault/recovery) and
-  every time the safety net opens the AP are now recorded in the database
-  (`event_log`, capped at 1000 rows) and shown under Instellingen → Meldingen, so
-  a post-mortem no longer depends on `journalctl` surviving a reboot. Exposed at
-  `GET /api/events`.
+- **Durable event log for post-mortems.** Health transitions (fault/recovery),
+  every time the safety net opens the AP, and each service start are now recorded
+  in the database (`event_log`, capped at 1000 rows) and shown under
+  Instellingen → Meldingen, so a post-mortem no longer depends on `journalctl`
+  surviving a reboot. Exposed at `GET /api/events`.
+- **Startup notification.** On start the device sends an "info" webhook (ntfy tag
+  `information_source`) with the version, local time, time-since-boot and the
+  connected WiFi network — so you see it come back after a power cut or the
+  self-heal reboot, and can tell a full reboot from a mere service restart.
+  On by default; toggle under Instellingen → Meldingen (`notify_on_start`).
 
 ### Changed
 - **The offline alert is now sent before the AP takes over the radio.** Previously

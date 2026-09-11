@@ -37,6 +37,23 @@ def test_alert_posts_json():
     assert headers["Priority"] == "urgent"
 
 
+def test_alert_with_tags_sets_header_and_body():
+    t = FakeTransport()
+    n = Notifier(transport=t)
+    n.alert("https://ntfy.sh/x", level="info", title="T", message="M", tags="information_source")
+    _url, body, headers = t.posts[0]
+    assert headers["Tags"] == "information_source"
+    assert headers["Priority"] == "default"  # info is not urgent
+    assert body["tags"] == "information_source"
+
+
+def test_alert_without_tags_omits_header():
+    t = FakeTransport()
+    Notifier(transport=t).alert("https://ntfy.sh/x", level="ok", title="T", message="M")
+    _url, body, headers = t.posts[0]
+    assert "Tags" not in headers and "tags" not in body
+
+
 def test_alert_noop_without_url():
     t = FakeTransport()
     assert Notifier(transport=t).alert("", level="error", title="T", message="M") is False

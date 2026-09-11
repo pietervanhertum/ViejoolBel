@@ -25,6 +25,24 @@ The easiest target is **[ntfy.sh](https://ntfy.sh)** — free, no account:
 Discord, Slack and Home Assistant webhooks work too — paste their incoming-webhook
 URL instead.
 
+### Startup notification
+
+When the service starts it sends one **info**-level message to the same webhook
+(ntfy shows it with an ℹ️ `information_source` tag) containing the version, the
+local time, the time since boot, and the WiFi network it is connected to — for
+example:
+
+```
+ViejoolBel gestart
+versie 0.2.14 · gestart 2026-09-11 09:42:07 CEST · sinds boot: 0m · WiFi: SchoolWiFi · IP: 192.168.1.50
+```
+
+This confirms the device came back after a power cut or the self-heal recovery
+reboot, and "sinds boot" lets you tell a full reboot (small value) from a mere
+service restart (large value). It is on by default; untick **Stuur een info-melding
+bij het opstarten** under Instellingen → Meldingen to disable it. Every start is
+also written to the durable event log regardless of this setting.
+
 ## 2. Heartbeat / dead man's switch (device is offline or dead)
 
 This is the only thing that can catch a device that is **fully offline, powered

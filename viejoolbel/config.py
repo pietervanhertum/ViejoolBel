@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     # this is what catches a device that is fully offline or powered down.
     heartbeat_url: str = ""
     heartbeat_interval_seconds: float = 900.0
+    # Send an "info" webhook notice when the service starts (with time, uptime and
+    # the connected WiFi network). Also makes reboots visible. UI-editable.
+    notify_on_start: bool = True
     # Minimum plausible year; a system clock below this means the clock is unset
     # (no RTC, no NTP) and rings would be wrong (see docs/hardware.md).
     min_plausible_year: int = 2024

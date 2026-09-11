@@ -17,18 +17,61 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import socket
 import threading
 import time
 from zoneinfo import ZoneInfo
 
-from . import ap, health, systemd_notify
+from . import ap, health, systemd_notify, wifi
 from .config import Settings
 from .db import get_setting, record_event, session_scope
 from .health import HealthReport, Level
-from .models import EV_AP_FALLBACK, EV_HEALTH_FAULT, EV_HEALTH_RECOVERED
+from .models import (
+    EV_AP_FALLBACK,
+    EV_HEALTH_FAULT,
+    EV_HEALTH_RECOVERED,
+    EV_SERVICE_STARTED,
+)
 from .notify import Notifier
 
 log = logging.getLogger(__name__)
+
+
+def _uptime_seconds() -> float | None:
+    """Seconds since the machine booted (Linux /proc/uptime), or None off-device.
+
+    Lets the startup notice tell a full reboot (small uptime) apart from a mere
+    service restart (large uptime) — useful given the self-heal recovery reboot."""
+    try:
+        with open("/proc/uptime") as f:  # noqa: PTH123 - /proc is not a real path
+            return float(f.read().split()[0])
+    except (OSError, ValueError):
+        return None
+
+
+def _fmt_duration(seconds: float) -> str:
+    total = int(seconds)
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes = rem // 60
+    if days:
+        return f"{days}d {hours}u {minutes}m"
+    if hours:
+        return f"{hours}u {minutes}m"
+    return f"{minutes}m"
+
+
+def _local_ip() -> str | None:
+    """Best-effort primary LAN IP (no packets are actually sent), or None."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("192.0.2.1", 9))  # TEST-NET-1: just picks the outbound route
+            return str(s.getsockname()[0])
+        finally:
+            s.close()
+    except OSError:
+        return None
 
 
 class HealthMonitor:
@@ -59,6 +102,12 @@ class HealthMonitor:
 
     def start(self) -> None:
         systemd_notify.ready()
+        # Announce startup from a throwaway thread so gathering WiFi/IP info and
+        # posting the webhook (each can take seconds) never delays the first
+        # watchdog pet in the monitor loop.
+        threading.Thread(
+            target=self._startup_notice, name="startup-notice", daemon=True
+        ).start()
         self._thread.start()
 
     def stop(self) -> None:
@@ -72,6 +121,54 @@ class HealthMonitor:
     def _heartbeat_url(self) -> str:
         with session_scope() as s:
             return get_setting(s, "heartbeat_url", self._settings.heartbeat_url)
+
+    def _notify_on_start(self) -> bool:
+        with session_scope() as s:
+            raw = get_setting(
+                s, "notify_on_start", "1" if self._settings.notify_on_start else "0"
+            )
+        return raw not in ("0", "false", "False", "")
+
+    # --- startup notice --------------------------------------------------
+    def _startup_notice(self) -> None:
+        """Record a durable 'started' event and, if enabled, POST an info webhook
+        with the time, uptime and connected WiFi network. Best-effort throughout."""
+        from . import __version__
+
+        now = dt.datetime.now(self._tz)
+        try:
+            ssid = wifi.current_ssid()
+        except Exception:  # never let the notice thread die
+            log.exception("Startup notice: SSID lookup failed")
+            ssid = None
+        ip = _local_ip()
+        uptime = _uptime_seconds()
+
+        parts = [f"versie {__version__}", f"gestart {now:%Y-%m-%d %H:%M:%S %Z}"]
+        if uptime is not None:
+            parts.append(f"sinds boot: {_fmt_duration(uptime)}")
+        parts.append(f"WiFi: {ssid or 'niet verbonden'}")
+        if ip:
+            parts.append(f"IP: {ip}")
+        message = " · ".join(parts)
+
+        try:
+            with session_scope() as s:
+                record_event(s, EV_SERVICE_STARTED, message, level="info")
+        except Exception:
+            log.exception("Startup notice: recording event failed")
+
+        if not self._notify_on_start():
+            return
+        url = self._webhook_url()
+        if url:
+            self._notifier.alert(
+                url,
+                level="info",
+                title="ViejoolBel gestart",
+                message=message,
+                tags="information_source",
+            )
 
     # --- main loop -------------------------------------------------------
     def _loop(self) -> None:

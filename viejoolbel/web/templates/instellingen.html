@@ -168,6 +168,10 @@
       <label>Heartbeat-URL (dead man's switch)</label>
       <input name="heartbeat_url" value="{{ heartbeat_url }}" placeholder="https://hc-ping.com/xxxxxxxx">
     </div>
+    <label class="check" style="margin:.2rem 0">
+      <input type="checkbox" name="notify_on_start" {% if notify_on_start %}checked{% endif %}>
+      Stuur een info-melding bij het opstarten (met tijd, uptime en WiFi-netwerk)
+    </label>
     <div class="form-actions">
       <button class="btn btn-primary" type="submit">Opslaan</button>
       <button class="btn" type="button" onclick="apiPost('/api/notify-test')">Stuur testmelding</button>
@@ -502,6 +506,7 @@ const EVENT_LABELS = {
   ap_fallback: 'Vangnet: AP geopend',
   health_fault: 'Probleem gedetecteerd',
   health_recovered: 'Hersteld',
+  service_started: 'Opgestart',
 };
 
 async function loadEvents() {

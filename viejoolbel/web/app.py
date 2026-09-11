@@ -376,6 +376,9 @@ def create_app(
         with session_scope() as s:
             webhook_url = get_setting(s, "notify_webhook_url", settings.notify_webhook_url)
             heartbeat_url = get_setting(s, "heartbeat_url", settings.heartbeat_url)
+            notify_on_start = get_setting(
+                s, "notify_on_start", "1" if settings.notify_on_start else "0"
+            ) not in ("0", "false", "False", "")
             volume_db = int(get_setting(s, "volume_db", "0") or "0")
             default_pw = auth.uses_default_password(s)
         return _page(
@@ -384,6 +387,7 @@ def create_app(
             "instellingen",
             webhook_url=webhook_url,
             heartbeat_url=heartbeat_url,
+            notify_on_start=notify_on_start,
             volume_db=volume_db,
             timezone=settings.timezone,
             default_pw=default_pw,
@@ -453,6 +457,10 @@ def create_app(
                         s, "notify_webhook_url", settings.notify_webhook_url
                     ),
                     "heartbeat_url": get_setting(s, "heartbeat_url", settings.heartbeat_url),
+                    "notify_on_start": get_setting(
+                        s, "notify_on_start", "1" if settings.notify_on_start else "0"
+                    )
+                    not in ("0", "false", "False", ""),
                 }
             )
 
@@ -461,10 +469,12 @@ def create_app(
         _: LoggedIn,
         notify_webhook_url: Annotated[str, Form()] = "",
         heartbeat_url: Annotated[str, Form()] = "",
+        notify_on_start: Annotated[bool, Form()] = True,
     ) -> JSONResponse:
         with session_scope() as s:
             set_setting(s, "notify_webhook_url", notify_webhook_url.strip())
             set_setting(s, "heartbeat_url", heartbeat_url.strip())
+            set_setting(s, "notify_on_start", "1" if notify_on_start else "0")
         return JSONResponse({"ok": True})
 
     @app.post("/api/notify-test")

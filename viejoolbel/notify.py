@@ -51,18 +51,36 @@ class Notifier:
     def __init__(self, transport: Transport | None = None) -> None:
         self._transport = transport or UrllibTransport()
 
-    def alert(self, webhook_url: str, *, level: str, title: str, message: str) -> bool:
+    def alert(
+        self,
+        webhook_url: str,
+        *,
+        level: str,
+        title: str,
+        message: str,
+        tags: str | None = None,
+    ) -> bool:
         if not webhook_url:
             return False
-        body = json.dumps(
-            {"title": title, "message": message, "level": level, "source": "viejoolbel"}
-        ).encode("utf-8")
+        payload: dict[str, str] = {
+            "title": title,
+            "message": message,
+            "level": level,
+            "source": "viejoolbel",
+        }
+        if tags:
+            payload["tags"] = tags
+        body = json.dumps(payload).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
             # ntfy.sh reads these headers; harmless for other endpoints.
             "Title": title,
             "Priority": "urgent" if level == "error" else "default",
         }
+        if tags:
+            # ntfy renders these as an emoji/label next to the title (e.g. an
+            # "information_source" ℹ️ for the startup notice).
+            headers["Tags"] = tags
         try:
             status = self._transport.post(webhook_url, body, headers)
             if status >= 400:
