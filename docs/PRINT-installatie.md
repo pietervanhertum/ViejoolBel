@@ -139,8 +139,41 @@ In de webinterface, onderaan bij **"Meldingen bij problemen"**:
 - **Heartbeat-URL**: waarschuwt jou als het toestel **helemaal offline of uit**
   gaat (bv. een gratis check op `https://healthchecks.io`). Dit is de enige manier
   om een uitgevallen of stroomloos toestel te detecteren.
+- **"Stuur een info-melding bij het opstarten"** (standaard aan): het toestel
+  stuurt bij elke start een info-bericht met versie, tijd, tijd-sinds-boot en het
+  verbonden wifi-netwerk. Zo zie je het terugkomen na een stroompanne of een
+  zelf-herstel-herstart.
 
 Klik op **"Stuur testmelding"** om te controleren of het werkt.
+
+> 💡 Zet **beide** in: de webhook vangt fouten terwijl het toestel online is; de
+> heartbeat vangt een toestel dat volledig wegvalt. Zie `docs/monitoring.md` voor
+> de volledige opzet.
+
+### Achteraf uitzoeken wat er gebeurde (post-mortem)
+
+Onder **"Recente systeemgebeurtenissen"** (in dezelfde sectie) staat een
+duurzaam logboek dat een **herstart overleeft**: je ziet er wanneer een controle
+faalde, wanneer het vangnet het setup-netwerk opende, en elke keer dat het toestel
+opstartte. Handig om achteraf te reconstrueren wat er misging zonder in
+`journalctl` te hoeven duiken.
+
+## 8b. Zelf-herstel bij netwerkuitval (Instellingen → AP)
+
+Het toestel belt volledig **lokaal** — een netwerkstoring stopt de bel dus niet.
+Om het toestel toch **bereikbaar** te houden en zichzelf te laten herstellen, staan
+er twee instellingen onder **Instellingen → AP**:
+
+- **"Open de AP na … minuten zonder netwerk"** (standaard 15, 0 = uit): valt de
+  wifi-verbinding langer weg, dan opent het toestel het setup-netwerk
+  `ViejoolBel-Setup` zodat je het ter plaatse kunt herstellen.
+- **"Herstart daarna vanzelf na … minuten"** (standaard 10, 0 = uit): na het
+  openen van de AP **herstart** het toestel automatisch en probeert het opnieuw op
+  de schoolwifi te komen — een tijdelijke storing vereist zo geen plaatsbezoek.
+
+> De bel blijft ondertussen gewoon rinkelen; dit bepaalt enkel de
+> netwerk­bereikbaarheid. Zet de herstart-tijd op 0 als je niet wil dat het toestel
+> uit zichzelf herstart.
 
 ## 9. Bijwerken (update)
 
@@ -227,4 +260,6 @@ Doe dit onmiddellijk na het inloggen, vóór je het toestel oplevert:
 - [ ] DS3231 RTC werkt (tijd klopt na herstart zonder internet)
 - [ ] Toestel start vanzelf op na een stroomonderbreking (test: stekker uit/in)
 - [ ] Meldingen (webhook + heartbeat) ingesteld en getest
+- [ ] Opstart-melding ontvangen (verschijnt bij het herstarten van de dienst)
+- [ ] Zelf-herstel gecontroleerd (Instellingen → AP: vangnet + herstart-tijd)
 - [ ] Tailscale actief voor support op afstand
