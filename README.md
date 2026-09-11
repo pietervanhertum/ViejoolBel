@@ -52,6 +52,7 @@ a clean, tested, from-scratch implementation on a modern stack.
 | [`docs/hardware.md`](docs/hardware.md) | Wiring, relay, amplifier, RTC, GPIO pinout |
 | [`docs/installation.md`](docs/installation.md) | Flashing & installing on the Pi |
 | [`docs/onboarding.md`](docs/onboarding.md) | Headless first-boot WiFi setup |
+| [`docs/monitoring.md`](docs/monitoring.md) | Alerting (ntfy + healthchecks.io), post-mortem log, offline safety net |
 | [`docs/remote-support.md`](docs/remote-support.md) | Tailscale remote access |
 | [`docs/updates.md`](docs/updates.md) | How to publish a release and update the device |
 | [`docs/github-auth.md`](docs/github-auth.md) | Token setup so updates work on a private repo |

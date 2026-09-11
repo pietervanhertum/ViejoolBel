@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     # Safety net: if the device has no network for this many minutes, open the
     # onboarding AP so it can be recovered on-site. 0 disables it. UI-editable.
     ap_fallback_minutes: int = 15
+    # Self-heal: after the safety net opens the AP, reboot after this many minutes
+    # so the device retries its WiFi on its own (a transient outage then needs no
+    # site visit). 0 keeps the AP up until a manual reboot (legacy). UI-editable.
+    ap_fallback_recovery_minutes: int = 10
     # Optional GitHub token (read-only) so the update check + clone work on a
     # PRIVATE repository. Stored in /etc/viejoolbel/viejoolbel.env. See
     # docs/github-auth.md.

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from viejoolbel import ap
 from viejoolbel.config import Settings
@@ -40,10 +41,11 @@ def test_fallback_opens_ap_after_grace(
     m = _monitor(settings)
     monkeypatch.setattr(ap, "network_online", lambda: False)
     monkeypatch.setattr(ap, "ap_is_active", lambda: False)
-    raised = {"n": 0}
+    raised = {"n": 0, "recovery": None}
 
-    def fake_raise(_s):
+    def fake_raise(_s, recovery_minutes=0):
         raised["n"] += 1
+        raised["recovery"] = recovery_minutes
         return True, "ok"
 
     monkeypatch.setattr(ap, "raise_ap", fake_raise)
@@ -53,6 +55,8 @@ def test_fallback_opens_ap_after_grace(
     m._offline_since = time.monotonic() - (settings.ap_fallback_minutes * 60 + 1)
     m._check_network_fallback()          # grace elapsed -> opens AP
     assert raised["n"] == 1
+    # The self-heal reboot window is passed through to raise_ap.
+    assert raised["recovery"] == settings.ap_fallback_recovery_minutes
     monkeypatch.setattr(ap, "ap_is_active", lambda: True)
     m._check_network_fallback()          # AP now up -> stands down (no loop)
     assert raised["n"] == 1
@@ -61,7 +65,7 @@ def test_fallback_opens_ap_after_grace(
 def test_fallback_resets_when_back_online(
     initialized_db, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ):
-    def _no_raise(_s):
+    def _no_raise(_s, *a, **k):
         raise AssertionError("should not open the AP")
 
     m = _monitor(settings)
@@ -75,7 +79,7 @@ def test_fallback_resets_when_back_online(
 def test_fallback_disabled_when_zero(
     initialized_db, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ):
-    def _no_raise(_s):
+    def _no_raise(_s, *a, **k):
         raise AssertionError("fallback disabled — must not open the AP")
 
     with session_scope() as s:
@@ -87,6 +91,78 @@ def test_fallback_disabled_when_zero(
     monkeypatch.setattr(ap, "raise_ap", _no_raise)
     m._check_network_fallback()  # must not raise the AP
     assert m._offline_since is None
+
+
+def test_raise_ap_passes_recovery_minutes(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(ap, "available", lambda _s: True)
+    seen = {}
+
+    def run(cmd, *a, **k):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="ap-raised reboot-in=10min", stderr="")
+
+    monkeypatch.setattr(ap.subprocess, "run", run)
+    ok, _msg = ap.raise_ap(_SCRIPT, 10)
+    assert ok is True
+    assert seen["cmd"] == ["sudo", str(_SCRIPT), "raise", "10"]
+
+    # 0 (legacy) omits the minutes argument entirely.
+    ap.raise_ap(_SCRIPT, 0)
+    assert seen["cmd"] == ["sudo", str(_SCRIPT), "raise"]
+
+
+def test_fallback_records_event_before_raising(
+    initialized_db, settings: Settings, monkeypatch: pytest.MonkeyPatch
+):
+    """The safety-net persists a durable event AND fires its alert before the AP
+    takes over the radio (afterwards the device is offline)."""
+    from viejoolbel.db import session_scope as _scope
+    from viejoolbel.models import EV_AP_FALLBACK, EventLog
+    from viejoolbel.notify import Notifier
+
+    order: list[str] = []
+
+    class T:
+        def post(self, *a, **k):
+            order.append("alert")
+            return 200
+
+        def get(self, *a, **k):
+            return 200
+
+    m = HealthMonitor(settings, scheduler_is_alive=lambda: True, notifier=Notifier(transport=T()))
+    with session_scope() as s:
+        set_setting(s, "notify_webhook_url", "https://ntfy.sh/test")
+    monkeypatch.setattr(ap, "network_online", lambda: False)
+    monkeypatch.setattr(ap, "ap_is_active", lambda: False)
+    monkeypatch.setattr(ap, "raise_ap", lambda _s, r=0: order.append("raise") or (True, "ok"))
+
+    m._offline_since = time.monotonic() - (settings.ap_fallback_minutes * 60 + 1)
+    m._check_network_fallback()
+
+    assert order == ["alert", "raise"]  # alert must go out while still online
+    with _scope() as s:
+        events = list(s.scalars(select(EventLog).where(EventLog.kind == EV_AP_FALLBACK)))
+    assert len(events) == 1 and events[0].level == "warn"
+
+
+def test_ap_fallback_endpoint_sets_recovery(auth_client: TestClient):
+    resp = auth_client.post(
+        "/api/ap/fallback", data={"minutes": "20", "recovery_minutes": "8"}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["fallback_minutes"] == 20 and body["recovery_minutes"] == 8
+    # Reflected back in status.
+    status = auth_client.get("/api/ap/status").json()
+    assert status["fallback_minutes"] == 20 and status["recovery_minutes"] == 8
+
+
+def test_ap_fallback_rejects_bad_recovery(auth_client: TestClient):
+    resp = auth_client.post(
+        "/api/ap/fallback", data={"minutes": "20", "recovery_minutes": "999"}
+    )
+    assert resp.status_code == 400
 
 
 def test_status_unsupported(monkeypatch: pytest.MonkeyPatch):

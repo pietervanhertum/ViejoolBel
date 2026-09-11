@@ -45,9 +45,25 @@ case "${cmd}" in
     echo "disabled"
     ;;
   raise)
-    # Bring the AP up now with no reboot (used by the offline safety-net).
+    # Bring the AP up now (used by the offline safety-net). An optional minutes
+    # argument (>0) schedules a GUARANTEED reboot after N minutes so the device
+    # retries its WiFi on its own (self-heal) — armed FIRST, before touching the
+    # radio, so recovery happens even if the AP never comes up. 0/absent = no
+    # reboot (legacy: the AP stays up until someone reboots manually).
+    mins="${2:-0}"
+    [[ "${mins}" =~ ^[0-9]+$ ]] || mins=0
+    ((mins > 60)) && mins=60
+    if ((mins > 0)); then
+      if command -v systemd-run >/dev/null 2>&1 \
+         && systemd-run --on-active="${mins}min" --unit=viejoolbel-ap-recover-reboot \
+              /sbin/reboot >/dev/null 2>&1; then
+        :
+      else
+        setsid bash -c "sleep $((mins * 60)); /sbin/reboot" >/dev/null 2>&1 &
+      fi
+    fi
     setsid "${AP_SH}" now >/dev/null 2>&1 &
-    echo "ap-raised"
+    echo "ap-raised reboot-in=${mins}min"
     ;;
   start-test)
     mins="${2:-5}"

@@ -3,6 +3,35 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.14] - 2026-09-11
+
+### Fixed
+- **The offline safety net could strand the device until a manual reboot.** When
+  the WiFi link dropped for the grace period (default 15 min), the safety net
+  opened the onboarding AP — which takes over `wlan0`, so the device left the
+  school network and could only be recovered by physically rebooting it. A brief
+  outage thus turned into "the bell disappeared". (The schedule is local, so bells
+  kept ringing throughout; it was the device/UI that went missing.)
+
+### Added
+- **Self-healing recovery reboot.** After the safety net opens the AP the device
+  now reboots automatically after a configurable window (default 10 min, 0 = off)
+  and retries its WiFi on its own — a transient outage no longer needs a site
+  visit. The reboot is armed before the radio is touched, so recovery happens even
+  if the AP fails to come up. Set it in Instellingen → AP.
+- **Durable event log for post-mortems.** Health transitions (fault/recovery) and
+  every time the safety net opens the AP are now recorded in the database
+  (`event_log`, capped at 1000 rows) and shown under Instellingen → Meldingen, so
+  a post-mortem no longer depends on `journalctl` surviving a reboot. Exposed at
+  `GET /api/events`.
+
+### Changed
+- **The offline alert is now sent before the AP takes over the radio.** Previously
+  the "geen netwerk" webhook was POSTed *after* `wlan0` had already been
+  reconfigured, so it rarely got out. It now fires (and the event is persisted)
+  while the device is still online. The healthchecks.io heartbeat remains the
+  reliable detector for a device that goes fully offline — see `docs/monitoring.md`.
+
 ## [0.2.13] - 2026-09-10
 
 ### Fixed

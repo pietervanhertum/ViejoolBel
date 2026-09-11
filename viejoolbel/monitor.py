@@ -23,8 +23,9 @@ from zoneinfo import ZoneInfo
 
 from . import ap, health, systemd_notify
 from .config import Settings
-from .db import get_setting, session_scope
+from .db import get_setting, record_event, session_scope
 from .health import HealthReport, Level
+from .models import EV_AP_FALLBACK, EV_HEALTH_FAULT, EV_HEALTH_RECOVERED
 from .notify import Notifier
 
 log = logging.getLogger(__name__)
@@ -111,6 +112,18 @@ class HealthMonitor:
         except (TypeError, ValueError):
             return self._settings.ap_fallback_minutes
 
+    def _ap_fallback_recovery_minutes(self) -> int:
+        with session_scope() as s:
+            raw = get_setting(
+                s,
+                "ap_fallback_recovery_minutes",
+                str(self._settings.ap_fallback_recovery_minutes),
+            )
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return self._settings.ap_fallback_recovery_minutes
+
     def _check_network_fallback(self) -> None:
         """If the device has had no network for the configured grace period, open
         the onboarding AP so it can be recovered on-site. A short blip resets the
@@ -133,21 +146,40 @@ class HealthMonitor:
             self._offline_since = now
             return
         if not self._fallback_engaged and (now - self._offline_since) >= minutes * 60:
-            log.warning("No network for %d min; opening onboarding AP (safety net).", minutes)
+            recovery = self._ap_fallback_recovery_minutes()
+            log.warning(
+                "No network for %d min; opening onboarding AP (safety net); "
+                "auto-reboot in %s.",
+                minutes,
+                f"{recovery} min" if recovery > 0 else "off",
+            )
             self._fallback_engaged = True
-            ap.raise_ap(self._settings.ap_control_script)
+            recovery_note = (
+                f" Het toestel herstart automatisch na {recovery} min om opnieuw "
+                "verbinding te maken."
+                if recovery > 0
+                else ""
+            )
+            message = (
+                f"Geen netwerk sinds {minutes} min. Het onboarding-netwerk "
+                f"'{ap.AP_SSID}' is geopend zodat het toestel ter plaatse hersteld "
+                f"kan worden.{recovery_note}"
+            )
+            # Persist the event and fire the alert BEFORE the radio is reconfigured:
+            # once the AP takes over wlan0 the device is offline, so a webhook sent
+            # afterwards would never leave. (The heartbeat dead-man's-switch is what
+            # reliably catches the outage that follows.)
+            with session_scope() as s:
+                record_event(s, EV_AP_FALLBACK, message, level="warn")
             url = self._webhook_url()
             if url:
                 self._notifier.alert(
                     url,
                     level="warning",
                     title="ViejoolBel: geen netwerk",
-                    message=(
-                        f"Geen netwerk sinds {minutes} min. Het onboarding-netwerk "
-                        f"'{ap.AP_SSID}' is geopend zodat het toestel ter plaatse "
-                        "hersteld kan worden."
-                    ),
+                    message=message,
                 )
+            ap.raise_ap(self._settings.ap_control_script, recovery)
 
     def evaluate_once(self) -> HealthReport:
         """Evaluate health, store it, and fire alerts on state transitions.
@@ -172,18 +204,28 @@ class HealthMonitor:
         if now_level is prev:
             return
         self._last_level = now_level
+        if now_level is Level.OK:
+            message = "Alle controles zijn OK."
+            with session_scope() as s:
+                record_event(s, EV_HEALTH_RECOVERED, message, level="ok")
+        else:
+            message = (
+                "; ".join(f"{c.name}: {c.detail}" for c in report.problems)
+                or "Onbekend probleem"
+            )
+            with session_scope() as s:
+                record_event(s, EV_HEALTH_FAULT, message, level=now_level.value)
         url = self._webhook_url()
         if not url:
             return
         if now_level is Level.OK:
             self._notifier.alert(
-                url, level="ok", title="ViejoolBel hersteld", message="Alle controles zijn OK."
+                url, level="ok", title="ViejoolBel hersteld", message=message
             )
         else:
-            problems = "; ".join(f"{c.name}: {c.detail}" for c in report.problems)
             self._notifier.alert(
                 url,
                 level=now_level.value,
                 title=f"ViejoolBel probleem ({now_level.value})",
-                message=problems or "Onbekend probleem",
+                message=message,
             )

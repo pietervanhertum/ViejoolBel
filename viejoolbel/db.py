@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from .models import (
@@ -15,6 +15,7 @@ from .models import (
     Base,
     CalendarRuleKind,
     DayType,
+    EventLog,
     Setting,
     Sound,
     WeekdayDefault,
@@ -80,6 +81,30 @@ def set_setting(s: Session, key: str, value: str) -> None:
         s.add(Setting(key=key, value=value))
     else:
         row.value = value
+
+
+# Keep at most this many event-log rows so the table can never grow without bound
+# on a device that runs for years.
+_EVENT_LOG_MAX_ROWS = 1000
+
+
+def record_event(
+    s: Session, kind: str, detail: str = "", *, level: str = "info"
+) -> EventLog:
+    """Append an operational event to the durable :class:`EventLog` and trim the
+    table to :data:`_EVENT_LOG_MAX_ROWS`. Never raises on trim failure."""
+    event = EventLog(kind=kind, level=level, detail=detail[:500])
+    s.add(event)
+    s.flush()
+    # Trim oldest rows beyond the cap (cheap: only runs the delete when over).
+    total = s.scalar(select(func.count()).select_from(EventLog)) or 0
+    if total > _EVENT_LOG_MAX_ROWS:
+        cutoff = s.scalar(
+            select(EventLog.id).order_by(EventLog.id.desc()).offset(_EVENT_LOG_MAX_ROWS)
+        )
+        if cutoff is not None:
+            s.query(EventLog).filter(EventLog.id <= cutoff).delete(synchronize_session=False)
+    return event
 
 
 def migrate(s: Session) -> None:

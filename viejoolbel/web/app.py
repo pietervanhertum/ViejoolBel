@@ -29,6 +29,7 @@ from ..models import (
     CalendarRule,
     CalendarRuleKind,
     DayType,
+    EventLog,
     RingLog,
     RingSource,
     Sound,
@@ -417,6 +418,31 @@ def create_app(
             return JSONResponse({"level": "unknown", "checks": []})
         report = monitor.evaluate_once()
         return JSONResponse(report.as_dict())
+
+    @app.get("/api/events")
+    def events(_: LoggedIn, limit: int = 50) -> JSONResponse:
+        """Durable operational event log (health transitions, offline safety-net),
+        newest first — the record for a post-mortem after the device recovers."""
+        limit = max(1, min(500, limit))
+        tz = scheduler.now().tzinfo
+        with session_scope() as s:
+            rows = list(
+                s.scalars(select(EventLog).order_by(EventLog.ts.desc()).limit(limit))
+            )
+        return JSONResponse(
+            {
+                "events": [
+                    {
+                        # Stored naive UTC; show in the device timezone like the rest.
+                        "ts": r.ts.replace(tzinfo=dt.UTC).astimezone(tz).isoformat(),
+                        "kind": r.kind,
+                        "level": r.level,
+                        "detail": r.detail,
+                    }
+                    for r in rows
+                ]
+            }
+        )
 
     @app.get("/api/notify-settings")
     def get_notify_settings(_: LoggedIn) -> JSONResponse:
@@ -962,19 +988,37 @@ def create_app(
         data = ap.status(settings.ap_control_script)
         with session_scope() as s:
             raw = get_setting(s, "ap_fallback_minutes", str(settings.ap_fallback_minutes))
+            raw_rec = get_setting(
+                s, "ap_fallback_recovery_minutes", str(settings.ap_fallback_recovery_minutes)
+            )
         try:
             data["fallback_minutes"] = int(raw)
         except (TypeError, ValueError):
             data["fallback_minutes"] = settings.ap_fallback_minutes
+        try:
+            data["recovery_minutes"] = int(raw_rec)
+        except (TypeError, ValueError):
+            data["recovery_minutes"] = settings.ap_fallback_recovery_minutes
         return JSONResponse(data)
 
     @app.post("/api/ap/fallback")
-    def ap_set_fallback(_: LoggedIn, minutes: Annotated[int, Form()]) -> JSONResponse:
+    def ap_set_fallback(
+        _: LoggedIn,
+        minutes: Annotated[int, Form()],
+        recovery_minutes: Annotated[int | None, Form()] = None,
+    ) -> JSONResponse:
         if not 0 <= minutes <= 240:
             raise HTTPException(400, "minuten moet tussen 0 en 240 liggen")
+        if recovery_minutes is not None and not 0 <= recovery_minutes <= 60:
+            raise HTTPException(400, "herstart-minuten moet tussen 0 en 60 liggen")
         with session_scope() as s:
             set_setting(s, "ap_fallback_minutes", str(minutes))
-        return JSONResponse({"ok": True, "fallback_minutes": minutes})
+            if recovery_minutes is not None:
+                set_setting(s, "ap_fallback_recovery_minutes", str(recovery_minutes))
+        body = {"ok": True, "fallback_minutes": minutes}
+        if recovery_minutes is not None:
+            body["recovery_minutes"] = recovery_minutes
+        return JSONResponse(body)
 
     @app.post("/api/ap/enabled")
     def ap_set_enabled(_: LoggedIn, enabled: Annotated[bool, Form()]) -> JSONResponse:

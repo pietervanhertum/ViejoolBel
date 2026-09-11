@@ -103,11 +103,20 @@ def ap_is_active() -> bool:
     return proc.returncode == 0
 
 
-def raise_ap(script: Path) -> tuple[bool, str]:
-    """Bring the onboarding AP up now (no reboot) — used by the fallback watchdog."""
+def raise_ap(script: Path, recovery_minutes: int = 0) -> tuple[bool, str]:
+    """Bring the onboarding AP up now — used by the offline safety-net.
+
+    When *recovery_minutes* > 0 the helper also schedules a guaranteed reboot after
+    that many minutes so the device retries its WiFi on its own (self-heal); the
+    reboot is armed before the radio is touched, so recovery happens even if the AP
+    fails to come up. 0 keeps the AP up until a manual reboot (legacy behaviour).
+    """
     if not available(script):
         return False, "AP-beheer is niet beschikbaar."
-    proc = _run(script, "raise")
+    args = ["raise"]
+    if recovery_minutes > 0:
+        args.append(str(int(recovery_minutes)))
+    proc = _run(script, *args)
     if proc is None or proc.returncode != 0:
         return False, "AP openen mislukt."
     return True, "AP geopend."

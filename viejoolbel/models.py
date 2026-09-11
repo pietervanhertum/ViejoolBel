@@ -145,5 +145,30 @@ class Setting(Base):
     value: Mapped[str] = mapped_column(String(500), default="")
 
 
+# Well-known event kinds for :class:`EventLog`. Kept as plain strings (not an
+# Enum column) so new kinds can be added without a schema migration.
+EV_HEALTH_FAULT = "health_fault"
+EV_HEALTH_RECOVERED = "health_recovered"
+EV_AP_FALLBACK = "ap_fallback"
+
+
+class EventLog(Base):
+    """Durable audit trail of operational events (health transitions, the offline
+    safety-net opening the AP, …), so a post-mortem does not depend on journald
+    surviving a reboot. Written by the health monitor; trimmed to a bounded size.
+    """
+
+    __tablename__ = "event_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Stored as naive UTC for consistent comparisons across SQLite (like RingLog).
+    ts: Mapped[dt.datetime] = mapped_column(
+        DateTime, default=lambda: dt.datetime.now(dt.UTC).replace(tzinfo=None)
+    )
+    kind: Mapped[str] = mapped_column(String(40))
+    level: Mapped[str] = mapped_column(String(10), default="info")  # ok/warn/error/info
+    detail: Mapped[str] = mapped_column(String(500), default="")
+
+
 # Schema version, bumped when models change; see db.migrate().
 SCHEMA_VERSION = 1
