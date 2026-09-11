@@ -24,13 +24,21 @@ network doesn't have to be in range: the profile is stored and used the moment
 that SSID appears. Run [`deploy/preseed_wifi.sh`](../deploy/preseed_wifi.sh) once
 per network:
 
+Omit the password to be prompted for it securely (hidden input) — that way a
+password with shell-special characters (`!`, `%`, `$`, …) can't be mangled by the
+shell and stays out of `ps`/history:
+
 ```bash
 # The school's WiFi (higher priority = preferred when both are in range):
-sudo ./deploy/preseed_wifi.sh "SchoolWiFi" "the-school-password" 10
+sudo ./deploy/preseed_wifi.sh "SchoolWiFi" "" 10   # prompts for the password
 
 # Optional: your own bench WiFi, so you can finish setup/testing at home too:
-sudo ./deploy/preseed_wifi.sh "WerkbankAP" "your-test-password" 1
+sudo ./deploy/preseed_wifi.sh "WerkbankAP" "" 1
 ```
+
+> If you do pass the password inline, use **single** quotes (`'!secret%pw?'`). In
+> an interactive bash shell a `!` inside **double** quotes triggers history
+> expansion *before* the script runs (`bash: !...: event not found`).
 
 Because it saves *multiple* networks, the same SD card works on your bench **and**
 at the school — it connects to whichever is in range. When the device arrives at

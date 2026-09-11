@@ -8,7 +8,8 @@ handy, but ViejoolBel can also onboard WiFi later with no internet (see
 
 > **Shipping a device to a site you won't visit?** If you know the site's WiFi,
 > preseed it before you ship so it joins on power-up with zero on-site setup —
-> run `sudo ./deploy/preseed_wifi.sh "SSID" "password" 10` (once per network).
+> run `sudo ./deploy/preseed_wifi.sh "SSID" "" 10` (once per network; omit the
+> password to be prompted securely — safest for passwords with `!`/`%`/`$`).
 > See [`onboarding.md`](onboarding.md#preseeding-wifi).
 
 ## 2. Install
