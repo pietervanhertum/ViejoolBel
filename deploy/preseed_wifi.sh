@@ -11,24 +11,47 @@
 # device joins whichever is in range, preferring the higher priority.
 #
 # Usage:
-#   sudo ./deploy/preseed_wifi.sh "<SSID>" "<PASSWORD>" [priority]
+#   sudo ./deploy/preseed_wifi.sh "<SSID>" ["<PASSWORD>"] [priority]
 #
-# Examples:
-#   sudo ./deploy/preseed_wifi.sh "SchoolWiFi"  "hunter2"      10   # the school
-#   sudo ./deploy/preseed_wifi.sh "WerkbankAP"  "testtest123"   1   # your bench
+# Prefer to OMIT the password so the script prompts for it securely — then a
+# password with special characters can never be mangled by the shell:
+#   sudo ./deploy/preseed_wifi.sh "SchoolWiFi" "" 10   # prompts, priority 10
+#   sudo ./deploy/preseed_wifi.sh "SchoolWiFi"         # prompts, priority 0
+#
+# If you DO pass the password inline, wrap it in SINGLE quotes. In an interactive
+# bash shell a '!' inside DOUBLE quotes triggers history expansion *before* this
+# script runs (bash: "!...: event not found"), and other characters ($, `) expand
+# too. Single quotes disable all of that:
+#   sudo ./deploy/preseed_wifi.sh "SchoolWiFi" '!SG_PersOn33L%3990?' 10
+# (An inline password is also visible in `ps` and your shell history — another
+# reason to prefer the prompt.)
 #
 # A higher priority number wins when two saved networks are both in range.
 # Re-running for an SSID that already exists updates its password/priority.
 #
 set -euo pipefail
 
-SSID="${1:?usage: preseed_wifi.sh SSID PASSWORD [priority]}"
-PSK="${2:?usage: preseed_wifi.sh SSID PASSWORD [priority]}"
+SSID="${1:?usage: preseed_wifi.sh SSID [PASSWORD] [priority]  (omit PASSWORD to be prompted securely)}"
+PSK="${2-}"
 PRIORITY="${3:-0}"
 
 if [[ $EUID -ne 0 ]]; then
   echo "This must be run as root: sudo ./deploy/preseed_wifi.sh ..." >&2
   exit 1
+fi
+
+# Read the password interactively when it was not supplied (or given empty), so
+# special characters bypass shell quoting entirely and it stays out of `ps`/history.
+if [[ -z "${PSK}" ]]; then
+  read -rsp "WiFi-wachtwoord voor '${SSID}': " PSK || true
+  echo >&2
+fi
+if [[ -z "${PSK}" ]]; then
+  echo "[preseed] Geen wachtwoord opgegeven; gestopt." >&2
+  exit 1
+fi
+if (( ${#PSK} < 8 || ${#PSK} > 63 )); then
+  echo "[preseed] Let op: een WPA-wachtwoord is 8–63 tekens (nu ${#PSK}). Ga toch door…" >&2
 fi
 
 # Prefer NetworkManager (default on Raspberry Pi OS Bookworm); it can hold many

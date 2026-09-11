@@ -85,13 +85,23 @@ Doe dit **thuis/op kantoor terwijl je het toestel klaarmaakt**, niet op school.
 Het netwerk hoeft niet in de buurt te zijn: het toestel onthoudt de gegevens en
 verbindt zodra dat netwerk in bereik komt. Voer op de Pi uit:
 
+Laat het **wachtwoord weg** — dan vraagt het script er veilig naar (verborgen
+invoer). Zo kan een wachtwoord met bijzondere tekens (`!`, `%`, `$`, `?`, …) nooit
+door de shell verminkt worden, en belandt het niet in `ps` of je shell-geschiedenis:
+
 ```bash
 # De wifi van de school (hoger getal = voorkeur als er meerdere in bereik zijn):
-sudo /opt/viejoolbel/current/deploy/preseed_wifi.sh "SchoolWifi" "schoolwachtwoord" 10
+sudo /opt/viejoolbel/current/deploy/preseed_wifi.sh "SchoolWifi" "" 10
+# → typ het wachtwoord in als erom gevraagd wordt
 
 # Optioneel: je eigen werkbank-wifi, zodat je thuis nog kunt testen:
-sudo /opt/viejoolbel/current/deploy/preseed_wifi.sh "WerkbankAP" "testwachtwoord" 1
+sudo /opt/viejoolbel/current/deploy/preseed_wifi.sh "WerkbankAP" "" 1
 ```
+
+> ⚠️ Geef je het wachtwoord tóch op de commandoregel mee, gebruik dan **enkele**
+> aanhalingstekens: `'!SG_PersOn33L%3990?'`. Met **dubbele** quotes verwerkt bash
+> een `!` als geschiedenis-expansie *vóór* het script draait — je krijgt dan
+> `bash: !...: event not found` en het script draait niet eens.
 
 Je kunt dit meerdere keren uitvoeren voor meerdere netwerken; het toestel kiest
 zelf welk netwerk in bereik is. Stuur het toestel op → de school steekt enkel de
