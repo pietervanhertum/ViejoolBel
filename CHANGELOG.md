@@ -31,6 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   On by default; toggle under Instellingen → Meldingen (`notify_on_start`).
 
 ### Changed
+- **`preseed_wifi.sh` prompts for the WiFi password when it is omitted.** Passing a
+  password inline is fragile — in an interactive bash shell a `!` inside double
+  quotes triggers history expansion *before* the script runs (`bash: !...: event
+  not found`), and an inline password is also visible in `ps`/history. The password
+  argument is now optional; leave it out (or empty) and the script reads it with a
+  hidden prompt. Docs updated to prefer this and to use single quotes otherwise.
 - **The offline alert is now sent before the AP takes over the radio.** Previously
   the "geen netwerk" webhook was POSTed *after* `wlan0` had already been
   reconfigured, so it rarely got out. It now fires (and the event is persisted)

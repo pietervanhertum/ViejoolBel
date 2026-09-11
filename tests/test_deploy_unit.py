@@ -54,3 +54,15 @@ def test_updater_refreshes_deployment_config():
     assert "/etc/sudoers.d/viejoolbel" in script
     # The sudoers file must be validated before it replaces the live one.
     assert "visudo -cf" in script
+
+
+def test_preseed_wifi_prompts_when_password_omitted():
+    # Regression: passing a password with a '!' inline is mangled by interactive
+    # bash history expansion ("event not found"). The script must therefore allow
+    # omitting the password and prompt for it (hidden) instead of requiring it.
+    text = (DEPLOY / "preseed_wifi.sh").read_text()
+    # Password argument is optional (no ${2:?...} that aborts when it is missing).
+    assert 'PSK="${2-}"' in text
+    assert "${2:?" not in text
+    # And there is a hidden interactive prompt when it is empty/omitted.
+    assert "read -rsp" in text
