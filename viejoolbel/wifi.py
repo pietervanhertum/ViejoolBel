@@ -14,6 +14,7 @@ raising.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import shutil
@@ -395,6 +396,98 @@ def forget(name: str) -> tuple[bool, str]:
             return False, _POLKIT_HINT
         return False, f"Verwijderen van '{name}' mislukt: {detail}"
     return True, f"Netwerk '{name}' verwijderd."
+
+
+def _highest_autoconnect_priority() -> int:
+    """Highest ``connection.autoconnect-priority`` across saved WiFi profiles (0
+    if none/unknown). Used to lift a chosen network above all the others."""
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"],
+            capture_output=True,
+            text=True,
+            timeout=_SCAN_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    if proc.returncode != 0:
+        return 0
+    highest = 0
+    for line in proc.stdout.splitlines():
+        conn_name, conn_type = (_split_terse(line) + ["", ""])[:2]
+        if conn_type != "802-11-wireless":
+            continue
+        try:
+            p = subprocess.run(  # noqa: S603 - argv list, no shell
+                ["nmcli", "-t", "-g", "connection.autoconnect-priority",
+                 "connection", "show", conn_name],
+                capture_output=True,
+                text=True,
+                timeout=_SCAN_TIMEOUT,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if p.returncode == 0:
+            with contextlib.suppress(ValueError):
+                highest = max(highest, int(p.stdout.strip() or "0"))
+    return highest
+
+
+def prefer(name: str) -> tuple[bool, str]:
+    """Make the saved network *name* the device's preferred one and switch to it.
+
+    Raises its ``autoconnect-priority`` above every other saved WiFi profile (so it
+    wins on the next auto-connect, e.g. over a guest network) and activates it now.
+    The priority change persists even if the network is not in range at the moment,
+    so it is still chosen once it appears. Note: activating it may drop the current
+    connection — the browser making this request can lose contact briefly, exactly
+    like joining a new network. Fails gracefully (never raises).
+    """
+    name = name.strip()
+    if not name:
+        return False, "Geen netwerk opgegeven."
+    if not available():
+        return False, "WiFi-beheer is op dit toestel niet beschikbaar."
+    new_priority = _highest_autoconnect_priority() + 10
+    try:
+        proc = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["nmcli", "connection", "modify", name,
+             "connection.autoconnect", "yes",
+             "connection.autoconnect-priority", str(new_priority)],
+            capture_output=True,
+            text=True,
+            timeout=_SCAN_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"Kon voorkeur niet instellen: {exc}"
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout).strip() or f"foutcode {proc.returncode}"
+        if _is_polkit_denied(detail):
+            return False, _POLKIT_HINT
+        return False, f"Instellen van voorkeur voor '{name}' mislukt: {detail}"
+    # Switch to it now. A timeout usually means it IS switching (and took our route
+    # with it), so report that as in-progress rather than a failure.
+    try:
+        up = subprocess.run(  # noqa: S603 - argv list, no shell
+            ["nmcli", "connection", "up", name],
+            capture_output=True,
+            text=True,
+            timeout=_CONNECT_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return True, (
+            f"'{name}' is nu het voorkeursnetwerk; het toestel schakelt over. "
+            "Deze pagina kan de verbinding even verliezen."
+        )
+    except OSError as exc:
+        return True, f"Voorkeur ingesteld, maar overschakelen kon niet starten: {exc}"
+    if up.returncode == 0:
+        return True, f"'{name}' is nu het voorkeursnetwerk en actief."
+    # Priority is saved regardless; it will be chosen once the network is in range.
+    return True, (
+        f"'{name}' is als voorkeur ingesteld. Kon nu niet overschakelen "
+        "(is het netwerk in bereik?); het wordt gekozen zodra het beschikbaar is."
+    )
 
 
 def connect(ssid: str, password: str, script: Path) -> tuple[bool, str]:

@@ -3,6 +3,24 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **"Voorkeur"-knop bij opgeslagen WiFi-netwerken.** In Instellingen → WiFi kun je
+  nu bij elk opgeslagen netwerk op **Voorkeur** klikken: dat tilt de
+  autoconnect-prioriteit boven alle andere profielen én schakelt er meteen naartoe.
+  Zo kies je zonder SSH het eigen netwerk boven bv. een gastnetwerk, en blijft die
+  keuze staan na een herstart. Backed by `POST /api/wifi/prefer`. (Voorheen zette
+  `set_wifi.sh` geen prioriteit, waardoor meerdere netwerken gelijk stonden.)
+
+### Changed
+- **`preseed_wifi.sh` prompts for the WiFi password when it is omitted.** Passing a
+  password inline is fragile — in an interactive bash shell a `!` inside double
+  quotes triggers history expansion *before* the script runs (`bash: !...: event
+  not found`), and an inline password is also visible in `ps`/history. The password
+  argument is now optional; leave it out (or empty) and the script reads it with a
+  hidden prompt. Docs updated to prefer this and to use single quotes otherwise.
+
 ## [0.2.15] - 2026-09-14
 
 ### Fixed
