@@ -96,6 +96,29 @@ def check_scheduler(alive: bool) -> Check:
     return Check("scheduler", Level.ERROR, "Scheduler is not running.")
 
 
+def check_writable(data_dir: Path) -> Check:
+    """Verify the data directory is actually writable, not just present.
+
+    A read-only filesystem — a worn SD card the kernel remounted ``ro`` after I/O
+    errors, or an accidental overlay/read-only mount — lets reads succeed while
+    every write silently fails, so schedule edits, the ring audit log and settings
+    are quietly lost. :func:`check_disk` only measures free space; this catches the
+    other half by round-tripping a tiny probe file.
+    """
+    probe = data_dir / ".viejoolbel-write-test"
+    try:
+        probe.write_text("ok")
+        probe.unlink()
+    except OSError as exc:
+        return Check(
+            "storage",
+            Level.ERROR,
+            f"{data_dir} is not writable ({exc.strerror or exc}). Schedule changes "
+            "and the ring log cannot be saved — the SD card may be read-only or failing.",
+        )
+    return Check("storage", Level.OK, "Storage is writable.")
+
+
 def check_hardware(hardware: object) -> Check:
     """Flag when the bell is running on the simulation driver on a real device.
 
@@ -139,6 +162,7 @@ def evaluate(
         check_clock(now, min_year),
         check_recent_rings(s, now),
         check_disk(data_dir),
+        check_writable(data_dir),
     ]
     if hardware is not None:
         checks.append(check_hardware(hardware))

@@ -7,7 +7,13 @@ import datetime as dt
 from viejoolbel import health
 from viejoolbel.db import session_scope
 from viejoolbel.hardware.mock import MockHardware
-from viejoolbel.health import Level, check_clock, check_hardware, check_scheduler
+from viejoolbel.health import (
+    Level,
+    check_clock,
+    check_hardware,
+    check_scheduler,
+    check_writable,
+)
 from viejoolbel.models import RingLog, RingSource
 
 TZ = dt.UTC
@@ -25,6 +31,21 @@ def test_clock_ok_when_plausible():
 def test_scheduler_check():
     assert check_scheduler(True).level is Level.OK
     assert check_scheduler(False).level is Level.ERROR
+
+
+def test_storage_check_ok_when_writable(tmp_path):
+    assert check_writable(tmp_path).level is Level.OK
+
+
+def test_storage_check_errors_when_not_writable(tmp_path):
+    # A path that is not a writable directory (here a regular file) makes the
+    # probe write fail exactly as a read-only mount would — and reliably so even
+    # when the suite runs as root, which ignores plain permission bits.
+    not_a_dir = tmp_path / "afile"
+    not_a_dir.write_text("x")
+    c = check_writable(not_a_dir)
+    assert c.level is Level.ERROR
+    assert "not writable" in c.detail
 
 
 def test_hardware_check_ok_for_normal_driver():
