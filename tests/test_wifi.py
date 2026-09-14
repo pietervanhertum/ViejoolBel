@@ -175,6 +175,66 @@ def test_forget_translates_polkit_denied(monkeypatch: pytest.MonkeyPatch):
     assert ok is False and "rechten" in msg.lower()
 
 
+def test_prefer_requires_name():
+    ok, _msg = wifi.prefer("  ")
+    assert ok is False
+
+
+def test_prefer_unsupported_without_nmcli(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: False)
+    ok, msg = wifi.prefer("viejoolbel-Personeel")
+    assert ok is False and "beschikbaar" in msg.lower()
+
+
+def test_prefer_sets_priority_above_others_and_activates(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: True)
+    monkeypatch.setattr(wifi, "_highest_autoconnect_priority", lambda: 5)
+    seen = {}
+
+    def run(cmd, *a, **k):
+        if "modify" in cmd:
+            seen["modify"] = cmd
+        elif "up" in cmd:
+            seen["up"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(wifi.subprocess, "run", run)
+    ok, msg = wifi.prefer("viejoolbel-Personeel")
+    assert ok is True and "actief" in msg.lower()
+    # Priority is lifted above the current highest (5 -> 15) and autoconnect ensured.
+    assert seen["modify"] == [
+        "nmcli", "connection", "modify", "viejoolbel-Personeel",
+        "connection.autoconnect", "yes",
+        "connection.autoconnect-priority", "15",
+    ]
+    assert seen["up"] == ["nmcli", "connection", "up", "viejoolbel-Personeel"]
+
+
+def test_prefer_keeps_priority_when_not_in_range(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: True)
+    monkeypatch.setattr(wifi, "_highest_autoconnect_priority", lambda: 0)
+
+    def run(cmd, *a, **k):
+        rc = 0 if "modify" in cmd else 4  # modify ok, but the network isn't in range
+        return subprocess.CompletedProcess(cmd, rc, stdout="", stderr="not found")
+
+    monkeypatch.setattr(wifi.subprocess, "run", run)
+    ok, msg = wifi.prefer("viejoolbel-Personeel")
+    assert ok is True and "voorkeur" in msg.lower()
+
+
+def test_prefer_translates_polkit_denied(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wifi, "available", lambda: True)
+    monkeypatch.setattr(wifi, "_highest_autoconnect_priority", lambda: 0)
+    monkeypatch.setattr(
+        wifi.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(a, 1, stdout="", stderr="not authorized"),
+    )
+    ok, msg = wifi.prefer("SchoolWiFi")
+    assert ok is False and "rechten" in msg.lower()
+
+
 def test_is_polkit_denied():
     assert wifi._is_polkit_denied("Error: not authorized to control networking.")
     assert wifi._is_polkit_denied("insufficient privileges")
@@ -195,6 +255,16 @@ def test_forget_endpoint_rejects_empty_name(auth_client: TestClient):
 
 def test_forget_endpoint_reports_failure(auth_client: TestClient):
     resp = auth_client.post("/api/wifi/forget", data={"name": "SchoolWiFi"})
+    assert resp.status_code == 502 and resp.json()["ok"] is False
+
+
+def test_prefer_endpoint_rejects_empty_name(auth_client: TestClient):
+    assert auth_client.post("/api/wifi/prefer", data={"name": " "}).status_code == 400
+
+
+def test_prefer_endpoint_reports_failure(auth_client: TestClient):
+    # No nmcli on the test machine → prefer() reports failure → 502.
+    resp = auth_client.post("/api/wifi/prefer", data={"name": "SchoolWiFi"})
     assert resp.status_code == 502 and resp.json()["ok"] is False
 
 
