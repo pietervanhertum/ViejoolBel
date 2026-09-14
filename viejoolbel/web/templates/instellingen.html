@@ -380,19 +380,37 @@ async function loadSavedNetworks() {
     if (!d.supported) { box.innerHTML = '<p class="muted">Niet beschikbaar op dit toestel.</p>'; return; }
     const nets = d.networks || [];
     if (!nets.length) { box.innerHTML = '<p class="muted">Nog geen opgeslagen netwerken.</p>'; return; }
-    box.innerHTML = '<div class="wifi-list">' + nets.map(n =>
-      '<div class="wifi-row active">' +
+    box.innerHTML = '<div class="wifi-list">' + nets.map(n => {
+      const handle = JSON.stringify(n.name).replace(/"/g, '&quot;');
+      return '<div class="wifi-row active">' +
         '<span class="ssid">' + escapeHtml(n.ssid) +
           (n.active ? ' <span class="badge">verbonden</span>' : '') + '</span>' +
-        (n.active
-          ? '<span class="meta" title="Verbind eerst met een ander netwerk voor je dit vergeet.">in gebruik</span>'
-          : '<button class="btn btn-danger" type="button" onclick="forgetNetwork(' +
-            JSON.stringify(n.name).replace(/"/g, '&quot;') + ')">Vergeten</button>') +
-      '</div>'
-    ).join('') + '</div>';
+        '<span style="display:flex;gap:.4rem;align-items:center">' +
+          '<button class="btn" type="button" title="Maak dit het voorkeursnetwerk en schakel er nu naartoe."' +
+            ' onclick="preferNetwork(' + handle + ')">Voorkeur</button>' +
+          (n.active
+            ? '<span class="meta" title="Verbind eerst met een ander netwerk voor je dit vergeet.">in gebruik</span>'
+            : '<button class="btn btn-danger" type="button" onclick="forgetNetwork(' +
+              handle + ')">Vergeten</button>') +
+        '</span>' +
+      '</div>';
+    }).join('') + '</div>';
   } catch (e) {
     box.innerHTML = '<p class="muted">Kon opgeslagen netwerken niet laden.</p>';
   }
+}
+
+async function preferNetwork(name) {
+  if (!confirm('“' + name + '” als voorkeursnetwerk instellen?\n\nHet toestel geeft dit netwerk voortaan voorrang en schakelt er nu naartoe. ' +
+    'Deze pagina kan daarbij even de verbinding verliezen — herlaad ze dan op het nieuwe adres.')) return;
+  const body = new FormData(); body.append('name', name);
+  try {
+    const resp = await fetch('/api/wifi/prefer', { method: 'POST', body });
+    if (!resp.ok) { alert('Mislukt: ' + (await extractError(resp))); return; }
+    const d = await resp.json();
+    alert(d.detail || 'Voorkeur ingesteld.');
+    loadSavedNetworks(); loadWifiStatus();
+  } catch (e) { alert('Netwerkfout: ' + e); }
 }
 
 async function forgetNetwork(name) {

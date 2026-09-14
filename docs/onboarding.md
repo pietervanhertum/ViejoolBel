@@ -41,7 +41,12 @@ sudo ./deploy/preseed_wifi.sh "WerkbankAP" "" 1
 > expansion *before* the script runs (`bash: !...: event not found`).
 
 Because it saves *multiple* networks, the same SD card works on your bench **and**
-at the school — it connects to whichever is in range. When the device arrives at
+at the school — it connects to whichever is in range.
+
+> **Ended up on the wrong network (e.g. a guest SSID)?** In the web UI under
+> Instellingen → WiFi, each saved network has a **Voorkeur** button: it raises that
+> network's autoconnect priority above the others and switches to it now, so no SSH
+> is needed. (Priority ties are why a guest network can win otherwise.) When the device arrives at
 the school it joins the school WiFi on its own and is reachable at
 `viejoolbel.local`; the setup portal below never has to appear.
 
