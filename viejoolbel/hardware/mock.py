@@ -19,6 +19,11 @@ class MockHardware(BellHardware):
     cleaned_up: bool = False
     # Tests can toggle this to simulate the physical button being held.
     button_pressed: bool = False
+    # Set when this mock is standing in for real hardware that could NOT be
+    # initialised (e.g. RPi.GPIO missing on a Pi). None means the mock was
+    # chosen deliberately (dev, CI or hardware="mock"); a string means every
+    # "ring" is silently a no-op and the health check must flag it.
+    fallback_reason: str | None = None
 
     def ring(self, request: RingRequest) -> None:
         self.set_status(StatusState.RINGING)

@@ -81,10 +81,12 @@ class HealthMonitor:
         *,
         scheduler_is_alive,  # callable[[], bool]
         notifier: Notifier | None = None,
+        hardware: object | None = None,
     ) -> None:
         self._settings = settings
         self._tz = ZoneInfo(settings.timezone)
         self._scheduler_is_alive = scheduler_is_alive
+        self._hardware = hardware
         self._notifier = notifier or Notifier()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, name="health-monitor", daemon=True)
@@ -289,6 +291,7 @@ class HealthMonitor:
                 data_dir=self._settings.data_dir,
                 scheduler_alive=bool(self._scheduler_is_alive()),
                 min_year=self._settings.min_plausible_year,
+                hardware=self._hardware,
             )
         systemd_notify.status(f"health={report.level.value}")
         self._handle_transition(report)

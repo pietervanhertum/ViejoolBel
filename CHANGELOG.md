@@ -3,6 +3,62 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.15] - 2026-09-14
+
+### Fixed
+- **"Bel nu" (and every scheduled/physical ring) did nothing on a freshly
+  installed device, while audio over SSH worked fine.** The cause was a *silent*
+  fall-back to the simulation (mock) hardware driver. `hardware="auto"` tries the
+  real GPIO driver and, if it can't be built, quietly used the mock instead — so
+  every ring reported success (HTTP 200, happy UI) but nothing physically fired.
+  On a Raspberry Pi this only happens when `RPi.GPIO` is missing, which the
+  installer allowed: `pip install .[pi] || pip install .` fell back to a base
+  install (no `RPi.GPIO`) without complaint if the Pi extra failed. Because audio
+  is a plain `ffplay`/`aplay` subprocess, an SSH sound test still worked,
+  making the failure baffling. Now:
+  - On a real Pi (detected via `/proc/device-tree/model`) the fall-back is tagged
+    with a reason and logged at error level instead of a quiet warning.
+  - A new **`hardware` health check** turns that reason into a visible error
+    banner on the dashboard ("Bell driver not active — bell and relay will not
+    fire; install the Pi extra"), so the degraded state is obvious instead of
+    hidden.
+  - The installer now **warns loudly** when the Pi extra (`RPi.GPIO`) fails to
+    install and prints the exact command to fix it, rather than silently doing a
+    base install (mirrored in the updater `apply_update.sh`).
+  - `hardware="gpio"` still fails fast (unchanged); only `auto` ever falls back.
+- **Rings could play no sound yet be logged as successful.** Playback used
+  `ffplay`, which plays via SDL; on the headless service (no login session) SDL
+  often cannot open the audio device and *silently* falls back to a dummy sink,
+  so `ffplay` exited 0 and the ring was recorded `ok`. Playback now goes straight
+  to ALSA via `ffmpeg | aplay`: a device that cannot be opened (wrong output,
+  busy, no permission) fails loudly and is logged `ok=0` with the reason. A new
+  `audio_device` setting (`VIEJOOLBEL_AUDIO_DEVICE`, e.g. `plughw:CARD=Headphones`)
+  pins the output when the default lands on the wrong card (e.g. HDMI). (Salvaged
+  from the abandoned PR #15.)
+- **`RPi.GPIO` failing to install during setup (the upstream cause).** Confirmed
+  on a Pi 3 from an install log: building the `RPi.GPIO` wheel aborted with
+  `[Errno 30] Read-only file system: '/root/.cache'` — pip's default cache
+  (`$HOME/.cache`, i.e. `/root/.cache` under sudo) was not writable, so the build
+  failed, the Pi extra didn't install, and the service fell back to the simulation
+  driver (dead bell, working SSH audio). Hardened the installer and updater on
+  several fronts so this can't silently recur:
+  - **`pip install --no-cache-dir`** on every pip call — the direct fix; pip no
+    longer needs a writable `~/.cache`.
+  - apt-install the distro's prebuilt **`python3-rpi.gpio`** and create the venv
+    with **`--system-site-packages`**, so `RPi.GPIO` resolves without any build or
+    download at all (also covers fully-offline installs) while the app's pinned
+    pip deps still take precedence.
+  - apt-install **`python3-dev` + `build-essential`** so a from-source build still
+    works when it is genuinely needed.
+  - Applied in both `install.sh` and `apply_update.sh`.
+
+### Added
+- **`storage` health check.** The dashboard now round-trips a small probe file in
+  the data directory each health cycle and raises an error banner if it is not
+  writable. A read-only filesystem (a worn SD card the kernel remounted `ro`, or
+  an accidental overlay/ro mount) otherwise lets reads succeed while schedule
+  edits and the ring log are silently lost — this makes that failure visible.
+
 ## [0.2.14] - 2026-09-11
 
 ### Fixed

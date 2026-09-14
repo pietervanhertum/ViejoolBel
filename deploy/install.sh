@@ -27,8 +27,14 @@ echo "==> Installing ViejoolBel ${VERSION} from ${SRC_DIR}"
 
 echo "==> Installing OS dependencies"
 apt-get update
-apt-get install -y python3 python3-venv python3-pip ffmpeg alsa-utils git avahi-daemon \
-  hostapd dnsmasq
+# python3-dev + build-essential are needed to compile RPi.GPIO's C extension when
+# no prebuilt wheel is available — notably during an OFFLINE install, where
+# piwheels can't be reached and pip must build it from source. Without them the
+# Pi extra fails to install and the service silently falls back to the simulation
+# driver (the "bell does nothing" failure). python3-rpi.gpio is the distro's
+# prebuilt copy, a belt-and-braces fallback for the same reason.
+apt-get install -y python3 python3-venv python3-pip python3-dev build-essential \
+  python3-rpi.gpio ffmpeg alsa-utils git avahi-daemon hostapd dnsmasq
 
 echo "==> Creating service user '${APP_USER}'"
 if ! id -u "${APP_USER}" >/dev/null 2>&1; then
@@ -42,10 +48,26 @@ mkdir -p "${RELEASE_DIR}" "${DATA_DIR}" "${ETC_DIR}"
 cp -a "${SRC_DIR}/." "${RELEASE_DIR}/"
 
 echo "==> Creating virtualenv and installing the app"
-python3 -m venv "${RELEASE_DIR}/.venv"
-"${RELEASE_DIR}/.venv/bin/pip" install --upgrade pip wheel
-# Install with the Pi extra so RPi.GPIO is pulled in on ARM.
-"${RELEASE_DIR}/.venv/bin/pip" install "${RELEASE_DIR}[pi]" || "${RELEASE_DIR}/.venv/bin/pip" install "${RELEASE_DIR}"
+# --system-site-packages lets the venv see the distro's prebuilt python3-rpi.gpio,
+# so RPi.GPIO is available even offline (no compile, no download); the app's own
+# pip-installed, version-pinned deps still take precedence over system ones.
+python3 -m venv --system-site-packages "${RELEASE_DIR}/.venv"
+# --no-cache-dir everywhere: pip's default cache is $HOME/.cache (/root/.cache
+# under sudo), which can be read-only or unwritable — that alone made building
+# the RPi.GPIO wheel fail ("[Errno 30] Read-only file system: '/root/.cache'"),
+# leaving the bell dead. Not caching sidesteps it entirely.
+PIP="${RELEASE_DIR}/.venv/bin/pip"
+"${PIP}" install --no-cache-dir --upgrade pip wheel
+# Install with the Pi extra so RPi.GPIO is pulled in on ARM. If that fails we
+# still install the base app so the web UI comes up, but WARN loudly: without
+# RPi.GPIO the service falls back to the simulation driver and the physical bell
+# and relay never fire (the health check flags this on the dashboard too).
+if ! "${PIP}" install --no-cache-dir "${RELEASE_DIR}[pi]"; then
+  echo "WARNING: installing the Pi extra (RPi.GPIO) failed. Falling back to the" >&2
+  echo "         base install. The bell/relay will NOT work until RPi.GPIO is" >&2
+  echo "         installed. Re-run: ${PIP} install --no-cache-dir '${RELEASE_DIR}[pi]'" >&2
+  "${PIP}" install --no-cache-dir "${RELEASE_DIR}"
+fi
 
 echo "==> Pointing 'current' symlink at this release"
 ln -sfn "${RELEASE_DIR}" "${OPT_DIR}/current"
