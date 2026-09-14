@@ -126,6 +126,11 @@ Als er geen wifi vooraf is ingesteld, maakt het toestel zélf een wifi-netwerk a
 
 *(Zie `docs/onboarding.md` voor de details.)*
 
+> 💡 **Verbindt het toestel met het verkeerde netwerk (bv. een gastnetwerk)?**
+> Ga naar **Instellingen → WiFi**: bij elk opgeslagen netwerk staat een knop
+> **"Voorkeur"**. Die geeft dat netwerk voorrang op alle andere én schakelt er
+> meteen naartoe — geen SSH nodig. De keuze blijft ook na een herstart gelden.
+
 ## 7. Support op afstand (zonder aan het schoolnetwerk te raken)
 
 Installeer **Tailscale** zodat je het toestel van thuis kunt bereiken zonder

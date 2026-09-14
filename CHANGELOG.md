@@ -24,6 +24,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   in the database (`event_log`, capped at 1000 rows) and shown under
   Instellingen → Meldingen, so a post-mortem no longer depends on `journalctl`
   surviving a reboot. Exposed at `GET /api/events`.
+- **"Voorkeur"-knop bij opgeslagen WiFi-netwerken.** In Instellingen → WiFi kun je
+  nu bij elk opgeslagen netwerk op **Voorkeur** klikken: dat tilt de
+  autoconnect-prioriteit boven alle andere profielen én schakelt er meteen naartoe.
+  Zo kies je zonder SSH het eigen netwerk boven bv. een gastnetwerk, en blijft die
+  keuze staan na een herstart. Backed by `POST /api/wifi/prefer`. (Voorheen zette
+  `set_wifi.sh` geen prioriteit, waardoor meerdere netwerken gelijk stonden.)
 - **Startup notification.** On start the device sends an "info" webhook (ntfy tag
   `information_source`) with the version, local time, time-since-boot and the
   connected WiFi network — so you see it come back after a power cut or the
