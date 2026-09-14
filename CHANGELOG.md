@@ -26,16 +26,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
     install and prints the exact command to fix it, rather than silently doing a
     base install (mirrored in the updater `apply_update.sh`).
   - `hardware="gpio"` still fails fast (unchanged); only `auto` ever falls back.
-- **`RPi.GPIO` failing to install during setup (the upstream cause).** `RPi.GPIO`
-  is a C extension; the installer apt-installed neither `python3-dev` nor a
-  compiler, so whenever no prebuilt wheel was available — notably an **offline**
-  install, where piwheels is unreachable and pip must build from source — the
-  build failed and the bell went dead (seen on a Pi 3). Fixed by:
-  - apt-installing `python3-dev` + `build-essential` so the source build works, and
-  - apt-installing the distro's prebuilt `python3-rpi.gpio` and creating the venv
-    with `--system-site-packages`, so `RPi.GPIO` is available even fully offline
-    (no compile, no download) while the app's pinned pip deps still take
-    precedence. Applied in both `install.sh` and `apply_update.sh`.
+- **`RPi.GPIO` failing to install during setup (the upstream cause).** Confirmed
+  on a Pi 3 from an install log: building the `RPi.GPIO` wheel aborted with
+  `[Errno 30] Read-only file system: '/root/.cache'` — pip's default cache
+  (`$HOME/.cache`, i.e. `/root/.cache` under sudo) was not writable, so the build
+  failed, the Pi extra didn't install, and the service fell back to the simulation
+  driver (dead bell, working SSH audio). Hardened the installer and updater on
+  several fronts so this can't silently recur:
+  - **`pip install --no-cache-dir`** on every pip call — the direct fix; pip no
+    longer needs a writable `~/.cache`.
+  - apt-install the distro's prebuilt **`python3-rpi.gpio`** and create the venv
+    with **`--system-site-packages`**, so `RPi.GPIO` resolves without any build or
+    download at all (also covers fully-offline installs) while the app's pinned
+    pip deps still take precedence.
+  - apt-install **`python3-dev` + `build-essential`** so a from-source build still
+    works when it is genuinely needed.
+  - Applied in both `install.sh` and `apply_update.sh`.
 
 ## [0.2.14] - 2026-09-11
 

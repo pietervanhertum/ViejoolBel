@@ -52,16 +52,21 @@ echo "==> Creating virtualenv and installing the app"
 # so RPi.GPIO is available even offline (no compile, no download); the app's own
 # pip-installed, version-pinned deps still take precedence over system ones.
 python3 -m venv --system-site-packages "${RELEASE_DIR}/.venv"
-"${RELEASE_DIR}/.venv/bin/pip" install --upgrade pip wheel
+# --no-cache-dir everywhere: pip's default cache is $HOME/.cache (/root/.cache
+# under sudo), which can be read-only or unwritable — that alone made building
+# the RPi.GPIO wheel fail ("[Errno 30] Read-only file system: '/root/.cache'"),
+# leaving the bell dead. Not caching sidesteps it entirely.
+PIP="${RELEASE_DIR}/.venv/bin/pip"
+"${PIP}" install --no-cache-dir --upgrade pip wheel
 # Install with the Pi extra so RPi.GPIO is pulled in on ARM. If that fails we
 # still install the base app so the web UI comes up, but WARN loudly: without
 # RPi.GPIO the service falls back to the simulation driver and the physical bell
 # and relay never fire (the health check flags this on the dashboard too).
-if ! "${RELEASE_DIR}/.venv/bin/pip" install "${RELEASE_DIR}[pi]"; then
+if ! "${PIP}" install --no-cache-dir "${RELEASE_DIR}[pi]"; then
   echo "WARNING: installing the Pi extra (RPi.GPIO) failed. Falling back to the" >&2
   echo "         base install. The bell/relay will NOT work until RPi.GPIO is" >&2
-  echo "         installed. Re-run: ${RELEASE_DIR}/.venv/bin/pip install '${RELEASE_DIR}[pi]'" >&2
-  "${RELEASE_DIR}/.venv/bin/pip" install "${RELEASE_DIR}"
+  echo "         installed. Re-run: ${PIP} install --no-cache-dir '${RELEASE_DIR}[pi]'" >&2
+  "${PIP}" install --no-cache-dir "${RELEASE_DIR}"
 fi
 
 echo "==> Pointing 'current' symlink at this release"

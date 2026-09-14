@@ -106,14 +106,17 @@ log "Building virtualenv (this needs internet for pip)"
 # --system-site-packages mirrors install.sh so RPi.GPIO stays available via the
 # distro's python3-rpi.gpio even when the Pi extra can't be built/fetched.
 python3 -m venv --system-site-packages "${NEW_DIR}/.venv"
-"${NEW_DIR}/.venv/bin/pip" install --upgrade pip wheel
+# --no-cache-dir: pip's default $HOME/.cache (/root/.cache) can be read-only,
+# which by itself fails the RPi.GPIO wheel build and kills the bell.
+PIP="${NEW_DIR}/.venv/bin/pip"
+"${PIP}" install --no-cache-dir --upgrade pip wheel
 # Try the Pi extra (RPi.GPIO) first; fall back to the base install off-device.
 # WARN loudly on fall-back: without RPi.GPIO the new release runs the simulation
 # driver and the bell/relay go dead (the health check will flag it post-swap too).
-if ! "${NEW_DIR}/.venv/bin/pip" install "${NEW_DIR}[pi]"; then
+if ! "${PIP}" install --no-cache-dir "${NEW_DIR}[pi]"; then
   log "WARNING: Pi extra (RPi.GPIO) failed to install; falling back to base install."
   log "         The bell/relay will NOT work until RPi.GPIO is available."
-  "${NEW_DIR}/.venv/bin/pip" install "${NEW_DIR}"
+  "${PIP}" install --no-cache-dir "${NEW_DIR}"
 fi
 
 log "Running health check on the new release"
