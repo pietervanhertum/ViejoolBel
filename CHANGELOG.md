@@ -22,17 +22,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
     banner on the dashboard ("Bell driver not active — bell and relay will not
     fire; install the Pi extra"), so the degraded state is obvious instead of
     hidden.
-
-### Added
-- **`storage` health check.** The dashboard now round-trips a small probe file in
-  the data directory each health cycle and raises an error banner if it is not
-  writable. A read-only filesystem (a worn SD card the kernel remounted `ro`, or
-  an accidental overlay/ro mount) otherwise lets reads succeed while schedule
-  edits and the ring log are silently lost — this makes that failure visible.
   - The installer now **warns loudly** when the Pi extra (`RPi.GPIO`) fails to
     install and prints the exact command to fix it, rather than silently doing a
     base install (mirrored in the updater `apply_update.sh`).
   - `hardware="gpio"` still fails fast (unchanged); only `auto` ever falls back.
+- **Rings could play no sound yet be logged as successful.** Playback used
+  `ffplay`, which plays via SDL; on the headless service (no login session) SDL
+  often cannot open the audio device and *silently* falls back to a dummy sink,
+  so `ffplay` exited 0 and the ring was recorded `ok`. Playback now goes straight
+  to ALSA via `ffmpeg | aplay`: a device that cannot be opened (wrong output,
+  busy, no permission) fails loudly and is logged `ok=0` with the reason. A new
+  `audio_device` setting (`VIEJOOLBEL_AUDIO_DEVICE`, e.g. `plughw:CARD=Headphones`)
+  pins the output when the default lands on the wrong card (e.g. HDMI). (Salvaged
+  from the abandoned PR #15.)
 - **`RPi.GPIO` failing to install during setup (the upstream cause).** Confirmed
   on a Pi 3 from an install log: building the `RPi.GPIO` wheel aborted with
   `[Errno 30] Read-only file system: '/root/.cache'` — pip's default cache
@@ -50,17 +52,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
     works when it is genuinely needed.
   - Applied in both `install.sh` and `apply_update.sh`.
 
+### Added
+- **`storage` health check.** The dashboard now round-trips a small probe file in
+  the data directory each health cycle and raises an error banner if it is not
+  writable. A read-only filesystem (a worn SD card the kernel remounted `ro`, or
+  an accidental overlay/ro mount) otherwise lets reads succeed while schedule
+  edits and the ring log are silently lost — this makes that failure visible.
+
 ## [0.2.14] - 2026-09-11
 
 ### Fixed
-- **Manual/scheduled rings could be silent while logged as successful.** Playback
-  used `ffplay`, which plays via SDL; on the headless service (no login session)
-  SDL often cannot open the audio device and *silently* falls back to a dummy sink,
-  so `ffplay` exits 0 and the ring was recorded `ok`. Playback now goes straight to
-  ALSA via `ffmpeg | aplay`: a device that cannot be opened (wrong output, busy, no
-  permission) now fails loudly and is logged `ok=0` with the reason. A new
-  `audio_device` setting (`VIEJOOLBEL_AUDIO_DEVICE`, e.g. `plughw:CARD=Headphones`)
-  pins the output when the default lands on the wrong card (e.g. HDMI).
 - **The offline safety net could strand the device until a manual reboot.** When
   the WiFi link dropped for the grace period (default 15 min), the safety net
   opened the onboarding AP — which takes over `wlan0`, so the device left the
