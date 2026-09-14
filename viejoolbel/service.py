@@ -77,6 +77,7 @@ class Service:
             button_pin=settings.gpio_button_pin,
             led_pin=settings.gpio_led_pin,
             amp_warmup_seconds=settings.amp_warmup_seconds,
+            audio_device=settings.audio_device,
         )
         self.controller = BellController(self.hardware, settings)
         self.scheduler = BellScheduler(self.controller, settings.timezone)

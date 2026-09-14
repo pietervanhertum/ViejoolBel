@@ -53,6 +53,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [0.2.14] - 2026-09-11
 
 ### Fixed
+- **Manual/scheduled rings could be silent while logged as successful.** Playback
+  used `ffplay`, which plays via SDL; on the headless service (no login session)
+  SDL often cannot open the audio device and *silently* falls back to a dummy sink,
+  so `ffplay` exits 0 and the ring was recorded `ok`. Playback now goes straight to
+  ALSA via `ffmpeg | aplay`: a device that cannot be opened (wrong output, busy, no
+  permission) now fails loudly and is logged `ok=0` with the reason. A new
+  `audio_device` setting (`VIEJOOLBEL_AUDIO_DEVICE`, e.g. `plughw:CARD=Headphones`)
+  pins the output when the default lands on the wrong card (e.g. HDMI).
 - **The offline safety net could strand the device until a manual reboot.** When
   the WiFi link dropped for the grace period (default 15 min), the safety net
   opened the onboarding AP — which takes over `wlan0`, so the device left the

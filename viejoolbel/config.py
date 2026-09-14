@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     gpio_led_pin: int = 23
     # Seconds to power the amplifier before/after audio playback (anti-hum).
     amp_warmup_seconds: float = 1.0
+    # ALSA output device for playback (e.g. "plughw:CARD=Headphones" for the Pi's
+    # analog jack, or "default"). Empty = ALSA default. Set this when the sound
+    # goes to the wrong output (e.g. HDMI). UI/env-editable via VIEJOOLBEL_AUDIO_DEVICE.
+    audio_device: str = ""
 
     # --- Updates ---
     update_repo: str = "https://github.com/pietervanhertum/ViejoolBel"
