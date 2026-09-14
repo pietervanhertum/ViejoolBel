@@ -3,6 +3,30 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.15] - 2026-09-14
+
+### Fixed
+- **"Bel nu" (and every scheduled/physical ring) did nothing on a freshly
+  installed device, while audio over SSH worked fine.** The cause was a *silent*
+  fall-back to the simulation (mock) hardware driver. `hardware="auto"` tries the
+  real GPIO driver and, if it can't be built, quietly used the mock instead — so
+  every ring reported success (HTTP 200, happy UI) but nothing physically fired.
+  On a Raspberry Pi this only happens when `RPi.GPIO` is missing, which the
+  installer allowed: `pip install .[pi] || pip install .` fell back to a base
+  install (no `RPi.GPIO`) without complaint if the Pi extra failed. Because audio
+  is a plain `ffplay`/`aplay` subprocess, an SSH sound test still worked,
+  making the failure baffling. Now:
+  - On a real Pi (detected via `/proc/device-tree/model`) the fall-back is tagged
+    with a reason and logged at error level instead of a quiet warning.
+  - A new **`hardware` health check** turns that reason into a visible error
+    banner on the dashboard ("Bell driver not active — bell and relay will not
+    fire; install the Pi extra"), so the degraded state is obvious instead of
+    hidden.
+  - The installer now **warns loudly** when the Pi extra (`RPi.GPIO`) fails to
+    install and prints the exact command to fix it, rather than silently doing a
+    base install.
+  - `hardware="gpio"` still fails fast (unchanged); only `auto` ever falls back.
+
 ## [0.2.14] - 2026-09-11
 
 ### Fixed

@@ -6,7 +6,8 @@ import datetime as dt
 
 from viejoolbel import health
 from viejoolbel.db import session_scope
-from viejoolbel.health import Level, check_clock, check_scheduler
+from viejoolbel.hardware.mock import MockHardware
+from viejoolbel.health import Level, check_clock, check_hardware, check_scheduler
 from viejoolbel.models import RingLog, RingSource
 
 TZ = dt.UTC
@@ -24,6 +25,34 @@ def test_clock_ok_when_plausible():
 def test_scheduler_check():
     assert check_scheduler(True).level is Level.OK
     assert check_scheduler(False).level is Level.ERROR
+
+
+def test_hardware_check_ok_for_normal_driver():
+    # A deliberately-chosen mock (dev/CI) is fine: no fallback_reason.
+    assert check_hardware(MockHardware()).level is Level.OK
+
+
+def test_hardware_check_errors_on_silent_fallback():
+    hw = MockHardware(fallback_reason="RPi.GPIO missing; bell will not fire")
+    c = check_hardware(hw)
+    assert c.level is Level.ERROR
+    assert "bell will not fire" in c.detail
+
+
+def test_evaluate_flags_degraded_hardware(initialized_db, settings):
+    now = dt.datetime(2025, 9, 1, 12, 0, tzinfo=TZ)
+    hw = MockHardware(fallback_reason="GPIO driver unavailable")
+    with session_scope() as s:
+        report = health.evaluate(
+            s,
+            now=now,
+            data_dir=settings.data_dir,
+            scheduler_alive=True,
+            min_year=2024,
+            hardware=hw,
+        )
+    assert report.level is Level.ERROR
+    assert any(c.name == "hardware" for c in report.problems)
 
 
 def test_report_level_is_worst_check(initialized_db, settings):

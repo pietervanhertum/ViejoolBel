@@ -44,8 +44,16 @@ cp -a "${SRC_DIR}/." "${RELEASE_DIR}/"
 echo "==> Creating virtualenv and installing the app"
 python3 -m venv "${RELEASE_DIR}/.venv"
 "${RELEASE_DIR}/.venv/bin/pip" install --upgrade pip wheel
-# Install with the Pi extra so RPi.GPIO is pulled in on ARM.
-"${RELEASE_DIR}/.venv/bin/pip" install "${RELEASE_DIR}[pi]" || "${RELEASE_DIR}/.venv/bin/pip" install "${RELEASE_DIR}"
+# Install with the Pi extra so RPi.GPIO is pulled in on ARM. If that fails we
+# still install the base app so the web UI comes up, but WARN loudly: without
+# RPi.GPIO the service falls back to the simulation driver and the physical bell
+# and relay never fire (the health check flags this on the dashboard too).
+if ! "${RELEASE_DIR}/.venv/bin/pip" install "${RELEASE_DIR}[pi]"; then
+  echo "WARNING: installing the Pi extra (RPi.GPIO) failed. Falling back to the" >&2
+  echo "         base install. The bell/relay will NOT work until RPi.GPIO is" >&2
+  echo "         installed. Re-run: ${RELEASE_DIR}/.venv/bin/pip install '${RELEASE_DIR}[pi]'" >&2
+  "${RELEASE_DIR}/.venv/bin/pip" install "${RELEASE_DIR}"
+fi
 
 echo "==> Pointing 'current' symlink at this release"
 ln -sfn "${RELEASE_DIR}" "${OPT_DIR}/current"

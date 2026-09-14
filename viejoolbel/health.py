@@ -96,6 +96,20 @@ def check_scheduler(alive: bool) -> Check:
     return Check("scheduler", Level.ERROR, "Scheduler is not running.")
 
 
+def check_hardware(hardware: object) -> Check:
+    """Flag when the bell is running on the simulation driver on a real device.
+
+    A silent fall-back to the mock driver (typically RPi.GPIO missing) makes every
+    ring 'succeed' while nothing physically fires — the baffling case where the
+    'Bel nu' button does nothing yet ``ffplay`` over SSH still makes sound. Surface
+    it as an error so it is visible on the dashboard instead of hidden in the log.
+    """
+    reason = getattr(hardware, "fallback_reason", None)
+    if reason:
+        return Check("hardware", Level.ERROR, str(reason))
+    return Check("hardware", Level.OK, f"Bell driver active ({type(hardware).__name__}).")
+
+
 def check_recent_rings(s: Session, now: dt.datetime, *, window_hours: int = 24) -> Check:
     since = now.astimezone(dt.UTC).replace(tzinfo=None) - dt.timedelta(hours=window_hours)
     failures = list(
@@ -118,6 +132,7 @@ def evaluate(
     data_dir: Path,
     scheduler_alive: bool,
     min_year: int,
+    hardware: object | None = None,
 ) -> HealthReport:
     checks = [
         check_scheduler(scheduler_alive),
@@ -125,4 +140,6 @@ def evaluate(
         check_recent_rings(s, now),
         check_disk(data_dir),
     ]
+    if hardware is not None:
+        checks.append(check_hardware(hardware))
     return HealthReport(generated_at=now, checks=checks)

@@ -81,7 +81,11 @@ class Service:
         self.controller = BellController(self.hardware, settings)
         self.scheduler = BellScheduler(self.controller, settings.timezone)
         self.button = ButtonWatcher(self.hardware, self.controller)
-        self.monitor = HealthMonitor(settings, scheduler_is_alive=self.scheduler.is_alive)
+        self.monitor = HealthMonitor(
+            settings,
+            scheduler_is_alive=self.scheduler.is_alive,
+            hardware=self.hardware,
+        )
 
     def start(self) -> None:
         self.scheduler.start()
