@@ -77,11 +77,16 @@ class Service:
             button_pin=settings.gpio_button_pin,
             led_pin=settings.gpio_led_pin,
             amp_warmup_seconds=settings.amp_warmup_seconds,
+            audio_device=settings.audio_device,
         )
         self.controller = BellController(self.hardware, settings)
         self.scheduler = BellScheduler(self.controller, settings.timezone)
         self.button = ButtonWatcher(self.hardware, self.controller)
-        self.monitor = HealthMonitor(settings, scheduler_is_alive=self.scheduler.is_alive)
+        self.monitor = HealthMonitor(
+            settings,
+            scheduler_is_alive=self.scheduler.is_alive,
+            hardware=self.hardware,
+        )
 
     def start(self) -> None:
         self.scheduler.start()
