@@ -24,8 +24,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
     hidden.
   - The installer now **warns loudly** when the Pi extra (`RPi.GPIO`) fails to
     install and prints the exact command to fix it, rather than silently doing a
-    base install.
+    base install (mirrored in the updater `apply_update.sh`).
   - `hardware="gpio"` still fails fast (unchanged); only `auto` ever falls back.
+- **`RPi.GPIO` failing to install during setup (the upstream cause).** `RPi.GPIO`
+  is a C extension; the installer apt-installed neither `python3-dev` nor a
+  compiler, so whenever no prebuilt wheel was available — notably an **offline**
+  install, where piwheels is unreachable and pip must build from source — the
+  build failed and the bell went dead (seen on a Pi 3). Fixed by:
+  - apt-installing `python3-dev` + `build-essential` so the source build works, and
+  - apt-installing the distro's prebuilt `python3-rpi.gpio` and creating the venv
+    with `--system-site-packages`, so `RPi.GPIO` is available even fully offline
+    (no compile, no download) while the app's pinned pip deps still take
+    precedence. Applied in both `install.sh` and `apply_update.sh`.
 
 ## [0.2.14] - 2026-09-11
 

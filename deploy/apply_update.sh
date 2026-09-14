@@ -103,11 +103,18 @@ rm -rf "${NEW_DIR}"
 git clone --depth 1 --branch "${TAG}" "$(clone_url)" "${NEW_DIR}"
 
 log "Building virtualenv (this needs internet for pip)"
-python3 -m venv "${NEW_DIR}/.venv"
+# --system-site-packages mirrors install.sh so RPi.GPIO stays available via the
+# distro's python3-rpi.gpio even when the Pi extra can't be built/fetched.
+python3 -m venv --system-site-packages "${NEW_DIR}/.venv"
 "${NEW_DIR}/.venv/bin/pip" install --upgrade pip wheel
 # Try the Pi extra (RPi.GPIO) first; fall back to the base install off-device.
-"${NEW_DIR}/.venv/bin/pip" install "${NEW_DIR}[pi]" \
-  || "${NEW_DIR}/.venv/bin/pip" install "${NEW_DIR}"
+# WARN loudly on fall-back: without RPi.GPIO the new release runs the simulation
+# driver and the bell/relay go dead (the health check will flag it post-swap too).
+if ! "${NEW_DIR}/.venv/bin/pip" install "${NEW_DIR}[pi]"; then
+  log "WARNING: Pi extra (RPi.GPIO) failed to install; falling back to base install."
+  log "         The bell/relay will NOT work until RPi.GPIO is available."
+  "${NEW_DIR}/.venv/bin/pip" install "${NEW_DIR}"
+fi
 
 log "Running health check on the new release"
 if ! health_check "${NEW_DIR}"; then
