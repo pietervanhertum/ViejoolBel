@@ -5,6 +5,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- **De eerste bel(len) van de dag misten na een herstart/transport op een Pi
+  zonder RTC — spoorloos.** Een Pi zonder real-time clock start op met een
+  achterhaalde klok; de scheduler plant dan de verkeerde dag, waarna NTP de klok
+  vooruitspringt (soms een hele dag, na transport). Er was niets dat na die
+  correctie opnieuw plande, dus de dag bleef ongepland en er ging geen enkele
+  geplande bel af. Omdat een overgeslagen bel niets wegschreef, was er ook geen
+  spoor van in de historie. Nu:
+  - **Watchdog-herplanning** (`viejoolbel/scheduler.py`): een controle elke minuut
+    herplant zodra de wandklok naar een andere dag rolt of vooruit-/terugspringt
+    (NTP-stap). Een late kloksynchronisatie herstelt zichzelf zo binnen een minuut.
+  - **Wachten op kloksync bij start**: vóór de eerste planning wacht de dienst
+    (begrensd, standaard 30 s; instelbaar via `VIEJOOLBEL_STARTUP_SYNC_WAIT_SECONDS`)
+    op `systemd-timesyncd`, zodat er meteen tegen de juiste dag gepland wordt. Een
+    **offline** toestel start gewoon door (geen harde afhankelijkheid).
+  - **Robuustere dagelijkse herplanning**: de 00:01-job kreeg een ruime
+    `misfire_grace_time` + `coalesce` (voorheen erfde hij de 1-seconde standaard van
+    APScheduler en viel hij bij de minste vertraging weg).
+  - **Gemiste bellen worden nu gelogd** (`event_log`, kind `ring_missed`, zichtbaar
+    bij Instellingen → gebeurtenissen), één keer per gemiste bel, en niet wanneer de
+    bel wél is afgegaan. Dit maakt DESIGN.md §3.4 waar ("de gap wordt vastgelegd").
+  - `systemd`-unit: zachte `Wants=time-sync.target` toegevoegd.
+  - Blijft gelden: een **DS3231 RTC-module** is de echte oplossing voor een offline
+    site met stroomuitval (zie `docs/hardware.md`).
+
 ### Added
 - **"Voorkeur"-knop bij opgeslagen WiFi-netwerken.** In Instellingen → WiFi kun je
   nu bij elk opgeslagen netwerk op **Voorkeur** klikken: dat tilt de

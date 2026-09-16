@@ -93,6 +93,18 @@ class Settings(BaseSettings):
     # (no RTC, no NTP) and rings would be wrong (see docs/hardware.md).
     min_plausible_year: int = 2024
 
+    # --- Scheduler robustness (no-RTC devices) ---
+    # On boot a device with no RTC starts with a stale clock; NTP then steps it,
+    # possibly across a whole day (e.g. after transport). Before the first plan,
+    # wait up to this many seconds for the clock to synchronise so we plan against
+    # the correct day. Bounded so an OFFLINE device still starts. 0 disables it.
+    # Only applies where systemd-timesyncd is present (no-op elsewhere, incl. tests).
+    startup_sync_wait_seconds: float = 30.0
+    # Safety net: how often to check that today's plan is still current and re-plan
+    # if the wall clock has moved to another day or jumped (NTP step). This is what
+    # makes a bell survive a stale-clock boot after the clock is later corrected.
+    replan_watchdog_seconds: float = 60.0
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / "viejoolbel.db"

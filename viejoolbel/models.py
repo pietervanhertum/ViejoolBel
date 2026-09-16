@@ -151,6 +151,13 @@ EV_HEALTH_FAULT = "health_fault"
 EV_HEALTH_RECOVERED = "health_recovered"
 EV_AP_FALLBACK = "ap_fallback"
 EV_SERVICE_STARTED = "service_started"
+# A scheduled ring whose time had already passed when the day was (re)planned, so
+# it was deliberately not replayed (DESIGN.md §3.4). Recorded so a missed bell is
+# visible in the history instead of vanishing without trace.
+EV_RING_MISSED = "ring_missed"
+# The system clock was not yet synchronised (no RTC + NTP not caught up) when the
+# service planned the day, so the plan may have been based on the wrong time.
+EV_CLOCK_UNSYNCED = "clock_unsynced"
 
 
 class EventLog(Base):
