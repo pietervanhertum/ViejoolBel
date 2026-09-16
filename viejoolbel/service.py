@@ -80,7 +80,12 @@ class Service:
             audio_device=settings.audio_device,
         )
         self.controller = BellController(self.hardware, settings)
-        self.scheduler = BellScheduler(self.controller, settings.timezone)
+        self.scheduler = BellScheduler(
+            self.controller,
+            settings.timezone,
+            startup_sync_wait_seconds=settings.startup_sync_wait_seconds,
+            watchdog_seconds=settings.replan_watchdog_seconds,
+        )
         self.button = ButtonWatcher(self.hardware, self.controller)
         self.monitor = HealthMonitor(
             settings,

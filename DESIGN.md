@@ -79,8 +79,20 @@ It is pure (no I/O) so it is exhaustively unit-tested.
   loop and does not busy-wait.
 - All actual ringing goes through a single `ring()` path that takes a hardware
   **lock**, so scheduled/manual/button rings can never overlap.
-- Missed-ring policy: if the service was down at a ring time we **do not** replay
-  it (a late bell is worse than none), but the gap is recorded in the audit log.
+- Missed-ring policy: if the service was down (or the clock was wrong) at a ring
+  time we **do not** replay it (a late bell is worse than none), but the gap is
+  recorded in the durable event log (`ring_missed`) so a missed bell is visible in
+  the history instead of vanishing without trace. It is recorded once, and only
+  when the bell did not actually ring (cross-checked against the ring log).
+- No-RTC resilience: a device without a real-time clock boots with a stale clock
+  and only gets the right time once NTP catches up — after transport, possibly a
+  whole day later. Two safeguards keep the plan correct through that: before the
+  first plan the service waits briefly for the clock to synchronise (bounded, so an
+  offline device still starts), and a per-minute **watchdog** re-plans whenever the
+  wall clock rolls to another day or jumps (an NTP step), so a late correction
+  self-heals. The daily 00:01 re-plan uses a generous misfire grace so a loaded Pi
+  never silently drops it. A DS3231 RTC (§4.1) remains the real fix for offline
+  sites with power cuts.
 
 ### 3.5 Hardware abstraction (`viejoolbel/hardware/`)
 - `base.py` — `BellHardware` protocol: `ring(sound, duration, use_relay, use_audio)`,

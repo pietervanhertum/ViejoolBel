@@ -2,6 +2,12 @@
 Description=ViejoolBel school bell system
 After=network-online.target sound.target time-sync.target
 Wants=network-online.target
+# Pull in + order after time synchronisation when it is available. This is a soft
+# Wants (not Requires) and time-sync.target is passive, so an OFFLINE device still
+# boots and rings; the app also waits briefly for the clock at startup and re-plans
+# on a later NTP correction (see viejoolbel/scheduler.py). A DS3231 RTC remains the
+# real fix for an offline site with power cuts (docs/hardware.md).
+Wants=time-sync.target
 # Never stop trying to restart the bell service, even after repeated crashes.
 StartLimitIntervalSec=0
 
