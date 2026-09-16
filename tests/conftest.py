@@ -22,6 +22,8 @@ def settings(tmp_path) -> Settings:
         hardware="mock",
         secret_key="test-secret",
         timezone="Europe/Brussels",
+        # Never block tests waiting on a clock-sync marker.
+        startup_sync_wait_seconds=0,
     )
 
 

@@ -17,17 +17,35 @@ from .base import RingRequest, StatusState
 log = logging.getLogger(__name__)
 
 
-def build_play_cmd(sound_path: Path, duration: float, volume_db: int = 0) -> list[str]:
-    """Build the ffplay command, applying the configured volume (in dB) when set.
+def build_play_pipeline(
+    sound_path: Path, duration: float, volume_db: int = 0, device: str = ""
+) -> tuple[list[str], list[str]]:
+    """Build the ``(ffmpeg, aplay)`` pipeline that decodes *sound_path* and plays it
+    through ALSA, applying the configured volume (in dB) when set.
 
-    Kept as a pure function so the volume behaviour is unit-testable without audio
-    hardware. ffplay handles mp3/wav/ogg and honours a hard timeout via ``-t``.
+    We deliberately use ``ffmpeg | aplay`` rather than ``ffplay``: ffplay plays via
+    SDL, which on a headless service (no login session) often cannot open the audio
+    device and then *silently* falls back to a dummy sink — it "succeeds" (exit 0)
+    while producing no sound. ``aplay`` talks to ALSA directly and returns a real
+    error when the device cannot be opened, so a genuine failure is recorded.
+
+    ffmpeg decodes any format (wav/mp3/ogg) to raw PCM; ``aplay`` (via a ``plug``
+    device) converts to whatever the card supports. Kept pure for unit testing.
     """
-    cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", "-t", str(duration)]
-    if volume_db:
-        cmd += ["-af", f"volume={volume_db}dB"]
-    cmd.append(str(sound_path))
-    return cmd
+    af = ["-af", f"volume={volume_db}dB"] if volume_db else []
+    decode = [
+        "ffmpeg", "-nostdin", "-loglevel", "error",
+        "-i", str(sound_path),
+        *af,
+        "-t", str(duration),
+        "-f", "s16le", "-ar", "44100", "-ac", "2", "-",
+    ]
+    play = [
+        "aplay", "-q", "-f", "S16_LE", "-r", "44100", "-c", "2",
+        *(["-D", device] if device else []),
+        "-",
+    ]
+    return decode, play
 
 
 class GpioAudioHardware:
@@ -41,6 +59,7 @@ class GpioAudioHardware:
         button_pin: int,
         led_pin: int,
         amp_warmup_seconds: float = 1.0,
+        audio_device: str = "",
     ) -> None:
         import RPi.GPIO as GPIO  # imported here so dev machines never need it
 
@@ -50,6 +69,7 @@ class GpioAudioHardware:
         self._button_pin = button_pin
         self._led_pin = led_pin
         self._amp_warmup = amp_warmup_seconds
+        self._audio_device = audio_device
 
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
@@ -79,16 +99,37 @@ class GpioAudioHardware:
 
     def _play(self, request: RingRequest) -> None:
         assert request.sound_path is not None
-        cmd = build_play_cmd(request.sound_path, request.duration, request.volume_db)
+        decode, play = build_play_pipeline(
+            request.sound_path, request.duration, request.volume_db, self._audio_device
+        )
+        timeout = request.duration + 5
         try:
-            subprocess.run(cmd, check=True, timeout=request.duration + 5)
-        except FileNotFoundError:
-            log.error("ffplay not found; install ffmpeg. Falling back to aplay.")
-            subprocess.run(
-                ["aplay", str(request.sound_path)], check=False, timeout=request.duration + 5
+            decoder = subprocess.Popen(  # noqa: S603 - argv list, no shell
+                decode, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
             )
-        except subprocess.TimeoutExpired:
-            log.warning("Playback exceeded timeout and was terminated.")
+            try:
+                player = subprocess.run(  # noqa: S603 - argv list, no shell
+                    play, stdin=decoder.stdout, capture_output=True, timeout=timeout
+                )
+            finally:
+                if decoder.stdout is not None:
+                    decoder.stdout.close()  # let ffmpeg get SIGPIPE if aplay stopped
+                try:
+                    decoder.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    decoder.kill()
+        except FileNotFoundError as exc:
+            # Missing ffmpeg or alsa-utils: surface it so the ring is logged failed.
+            raise RuntimeError(f"audiogereedschap ontbreekt (ffmpeg/aplay): {exc}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("audio afspelen duurde te lang en is afgebroken") from exc
+        if player.returncode != 0:
+            detail = (player.stderr or b"").decode("utf-8", "replace").strip()
+            # aplay reports here when the device cannot be opened (wrong output,
+            # busy, or no permission) — no more silent "success".
+            raise RuntimeError(
+                f"audio-uitvoer mislukt: {detail[:200] or f'aplay rc={player.returncode}'}"
+            )
 
     def set_status(self, state: StatusState) -> None:
         # Single LED: on while ringing/syncing, off when idle, blink handled by

@@ -1,0 +1,31 @@
+# ViejoolBel — Cloudflare Tunnel (locally-managed) configuration.
+#
+# Use this file for the "gitops" path where the tunnel's routing lives on the
+# device instead of in the Zero Trust dashboard. Copy it to
+# /etc/cloudflared/config.yml on the Pi and fill in your tunnel id.
+#
+#   cloudflared tunnel login
+#   cloudflared tunnel create viejoolbel          # prints the <TUNNEL_ID>
+#   cloudflared tunnel route dns viejoolbel bel.ottorosie.com
+#   cp deploy/cloudflared/config.example.yml /etc/cloudflared/config.yml
+#   # edit the two REPLACE_WITH_TUNNEL_ID placeholders below
+#
+# See docs/public-access.md for the full walkthrough, including the Cloudflare
+# Access policy that puts a real login in front of the UI.
+
+tunnel: REPLACE_WITH_TUNNEL_ID
+credentials-file: /etc/cloudflared/REPLACE_WITH_TUNNEL_ID.json
+
+# Do NOT auto-update the binary from under systemd; we update via apt.
+no-autoupdate: true
+
+ingress:
+  # IMPORTANT: the service MUST be http://localhost:8080. ViejoolBel's app-side
+  # Cloudflare Access gate treats loopback requests as "arrived through the
+  # tunnel" and requires a valid Access JWT for them, while leaving direct LAN
+  # access (viejoolbel.local:8080) untouched. Pointing the tunnel at a LAN IP
+  # instead would bypass that gate.
+  - hostname: bel.ottorosie.com
+    service: http://localhost:8080
+  # Everything else gets a 404 rather than reaching the app.
+  - service: http_status:404

@@ -3,9 +3,392 @@
 All notable changes to ViejoolBel are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- **De eerste bel(len) van de dag misten na een herstart/transport op een Pi
+  zonder RTC — spoorloos.** Een Pi zonder real-time clock start op met een
+  achterhaalde klok; de scheduler plant dan de verkeerde dag, waarna NTP de klok
+  vooruitspringt (soms een hele dag, na transport). Er was niets dat na die
+  correctie opnieuw plande, dus de dag bleef ongepland en er ging geen enkele
+  geplande bel af. Omdat een overgeslagen bel niets wegschreef, was er ook geen
+  spoor van in de historie. Nu:
+  - **Watchdog-herplanning** (`viejoolbel/scheduler.py`): een controle elke minuut
+    herplant zodra de wandklok naar een andere dag rolt of vooruit-/terugspringt
+    (NTP-stap). Een late kloksynchronisatie herstelt zichzelf zo binnen een minuut.
+  - **Wachten op kloksync bij start**: vóór de eerste planning wacht de dienst
+    (begrensd, standaard 30 s; instelbaar via `VIEJOOLBEL_STARTUP_SYNC_WAIT_SECONDS`)
+    op `systemd-timesyncd`, zodat er meteen tegen de juiste dag gepland wordt. Een
+    **offline** toestel start gewoon door (geen harde afhankelijkheid).
+  - **Robuustere dagelijkse herplanning**: de 00:01-job kreeg een ruime
+    `misfire_grace_time` + `coalesce` (voorheen erfde hij de 1-seconde standaard van
+    APScheduler en viel hij bij de minste vertraging weg).
+  - **Gemiste bellen worden nu gelogd** (`event_log`, kind `ring_missed`, zichtbaar
+    bij Instellingen → gebeurtenissen), één keer per gemiste bel, en niet wanneer de
+    bel wél is afgegaan. Dit maakt DESIGN.md §3.4 waar ("de gap wordt vastgelegd").
+  - `systemd`-unit: zachte `Wants=time-sync.target` toegevoegd.
+  - Blijft gelden: een **DS3231 RTC-module** is de echte oplossing voor een offline
+    site met stroomuitval (zie `docs/hardware.md`).
+
+### Added
+- **Publieke URL voor personeel via Cloudflare Tunnel + Access.** Personeel dat
+  Tailscale niet kan/wil installeren kan de webinterface nu bereiken op een
+  publiek, met login beschermd adres (bv. `https://bel.ottorosie.com`) — nog
+  steeds **zonder** port-forwarding of aanpassingen aan het schoolnetwerk (FR-21).
+  `cloudflared` maakt enkel uitgaande verbindingen (net als Tailscale), en
+  **Cloudflare Access** authenticeert de bezoeker aan de rand met een échte
+  identiteit per persoon (e-mailcode/SSO, MFA, intrekbaar) vóór het verkeer de Pi
+  bereikt. Ter aanvulling verifieert de app zelf het Cloudflare Access-JWT, zodat
+  de UI niet via de publieke hostname bereikbaar is zonder eerst Access te passeren
+  (verdediging in de diepte, bovenop het app-wachtwoord).
+  - Instelbaar via `VIEJOOLBEL_CF_ACCESS_TEAM_DOMAIN` + `VIEJOOLBEL_CF_ACCESS_AUD`;
+    de gate geldt enkel voor verkeer dat via de tunnel binnenkomt (loopback), het
+    schoolnetwerk (`viejoolbel.local:8080`) blijft ongemoeid. Zonder de nieuwe
+    `[access]`-extra weigert de gate tunnelverkeer (faalt veilig dicht) terwijl
+    lokaal gebruik én de bel gewoon blijven werken.
+  - Het bellen draait lokaal: een internet-/Cloudflare-storing betekent "geen
+    externe UI", nooit "geen bel".
+  - Nieuwe helper `deploy/cloudflared/install-cloudflared.sh`, een tunnel-config
+    (`config.example.yml`) en systemd-unit, en een volledige handleiding in
+    [`docs/public-access.md`](docs/public-access.md).
+- **"Voorkeur"-knop bij opgeslagen WiFi-netwerken.** In Instellingen → WiFi kun je
+  nu bij elk opgeslagen netwerk op **Voorkeur** klikken: dat tilt de
+  autoconnect-prioriteit boven alle andere profielen én schakelt er meteen naartoe.
+  Zo kies je zonder SSH het eigen netwerk boven bv. een gastnetwerk, en blijft die
+  keuze staan na een herstart. Backed by `POST /api/wifi/prefer`. (Voorheen zette
+  `set_wifi.sh` geen prioriteit, waardoor meerdere netwerken gelijk stonden.)
+
+### Changed
+- **`preseed_wifi.sh` prompts for the WiFi password when it is omitted.** Passing a
+  password inline is fragile — in an interactive bash shell a `!` inside double
+  quotes triggers history expansion *before* the script runs (`bash: !...: event
+  not found`), and an inline password is also visible in `ps`/history. The password
+  argument is now optional; leave it out (or empty) and the script reads it with a
+  hidden prompt. Docs updated to prefer this and to use single quotes otherwise.
+
+## [0.2.15] - 2026-09-14
+
+### Fixed
+- **"Bel nu" (and every scheduled/physical ring) did nothing on a freshly
+  installed device, while audio over SSH worked fine.** The cause was a *silent*
+  fall-back to the simulation (mock) hardware driver. `hardware="auto"` tries the
+  real GPIO driver and, if it can't be built, quietly used the mock instead — so
+  every ring reported success (HTTP 200, happy UI) but nothing physically fired.
+  On a Raspberry Pi this only happens when `RPi.GPIO` is missing, which the
+  installer allowed: `pip install .[pi] || pip install .` fell back to a base
+  install (no `RPi.GPIO`) without complaint if the Pi extra failed. Because audio
+  is a plain `ffplay`/`aplay` subprocess, an SSH sound test still worked,
+  making the failure baffling. Now:
+  - On a real Pi (detected via `/proc/device-tree/model`) the fall-back is tagged
+    with a reason and logged at error level instead of a quiet warning.
+  - A new **`hardware` health check** turns that reason into a visible error
+    banner on the dashboard ("Bell driver not active — bell and relay will not
+    fire; install the Pi extra"), so the degraded state is obvious instead of
+    hidden.
+  - The installer now **warns loudly** when the Pi extra (`RPi.GPIO`) fails to
+    install and prints the exact command to fix it, rather than silently doing a
+    base install (mirrored in the updater `apply_update.sh`).
+  - `hardware="gpio"` still fails fast (unchanged); only `auto` ever falls back.
+- **Rings could play no sound yet be logged as successful.** Playback used
+  `ffplay`, which plays via SDL; on the headless service (no login session) SDL
+  often cannot open the audio device and *silently* falls back to a dummy sink,
+  so `ffplay` exited 0 and the ring was recorded `ok`. Playback now goes straight
+  to ALSA via `ffmpeg | aplay`: a device that cannot be opened (wrong output,
+  busy, no permission) fails loudly and is logged `ok=0` with the reason. A new
+  `audio_device` setting (`VIEJOOLBEL_AUDIO_DEVICE`, e.g. `plughw:CARD=Headphones`)
+  pins the output when the default lands on the wrong card (e.g. HDMI). (Salvaged
+  from the abandoned PR #15.)
+- **`RPi.GPIO` failing to install during setup (the upstream cause).** Confirmed
+  on a Pi 3 from an install log: building the `RPi.GPIO` wheel aborted with
+  `[Errno 30] Read-only file system: '/root/.cache'` — pip's default cache
+  (`$HOME/.cache`, i.e. `/root/.cache` under sudo) was not writable, so the build
+  failed, the Pi extra didn't install, and the service fell back to the simulation
+  driver (dead bell, working SSH audio). Hardened the installer and updater on
+  several fronts so this can't silently recur:
+  - **`pip install --no-cache-dir`** on every pip call — the direct fix; pip no
+    longer needs a writable `~/.cache`.
+  - apt-install the distro's prebuilt **`python3-rpi.gpio`** and create the venv
+    with **`--system-site-packages`**, so `RPi.GPIO` resolves without any build or
+    download at all (also covers fully-offline installs) while the app's pinned
+    pip deps still take precedence.
+  - apt-install **`python3-dev` + `build-essential`** so a from-source build still
+    works when it is genuinely needed.
+  - Applied in both `install.sh` and `apply_update.sh`.
+
+### Added
+- **`storage` health check.** The dashboard now round-trips a small probe file in
+  the data directory each health cycle and raises an error banner if it is not
+  writable. A read-only filesystem (a worn SD card the kernel remounted `ro`, or
+  an accidental overlay/ro mount) otherwise lets reads succeed while schedule
+  edits and the ring log are silently lost — this makes that failure visible.
+
+## [0.2.14] - 2026-09-11
+
+### Fixed
+- **The offline safety net could strand the device until a manual reboot.** When
+  the WiFi link dropped for the grace period (default 15 min), the safety net
+  opened the onboarding AP — which takes over `wlan0`, so the device left the
+  school network and could only be recovered by physically rebooting it. A brief
+  outage thus turned into "the bell disappeared". (The schedule is local, so bells
+  kept ringing throughout; it was the device/UI that went missing.)
+
+### Added
+- **Self-healing recovery reboot.** After the safety net opens the AP the device
+  now reboots automatically after a configurable window (default 10 min, 0 = off)
+  and retries its WiFi on its own — a transient outage no longer needs a site
+  visit. The reboot is armed before the radio is touched, so recovery happens even
+  if the AP fails to come up. Set it in Instellingen → AP.
+- **Durable event log for post-mortems.** Health transitions (fault/recovery),
+  every time the safety net opens the AP, and each service start are now recorded
+  in the database (`event_log`, capped at 1000 rows) and shown under
+  Instellingen → Meldingen, so a post-mortem no longer depends on `journalctl`
+  surviving a reboot. Exposed at `GET /api/events`.
+- **Startup notification.** On start the device sends an "info" webhook (ntfy tag
+  `information_source`) with the version, local time, time-since-boot and the
+  connected WiFi network — so you see it come back after a power cut or the
+  self-heal reboot, and can tell a full reboot from a mere service restart.
+  On by default; toggle under Instellingen → Meldingen (`notify_on_start`).
+
+### Changed
+- **The offline alert is now sent before the AP takes over the radio.** Previously
+  the "geen netwerk" webhook was POSTed *after* `wlan0` had already been
+  reconfigured, so it rarely got out. It now fires (and the event is persisted)
+  while the device is still online. The healthchecks.io heartbeat remains the
+  reliable detector for a device that goes fully offline — see `docs/monitoring.md`.
+
+## [0.2.13] - 2026-09-10
+
+### Fixed
+- **WiFi diagnostics could crash with a PermissionError** when checking for the
+  polkit rule on a machine where `/etc/polkit-1/rules.d` is not traversable by the
+  app's user (Python 3.12's `Path.exists()` raises instead of returning False).
+  The check is now guarded and reports "unknown (no access)" instead.
+
+## [0.2.12] - 2026-09-10
+
+### Fixed
+- **"Recente bellen" showed the wrong time (off by the UTC offset).** Ring-log
+  timestamps are stored as naive UTC but were printed without converting to the
+  device timezone, so a 22:00 ring (CEST) showed as 20:00. They are now shown in
+  the configured timezone, like the clock at the top. The schedule itself was
+  always correct — bell times fire in the configured timezone.
+
+## [0.2.11] - 2026-09-10
+
+### Fixed
+- **Turning the relay off now also hides it when adding a bell time.** The
+  "Belmoment toevoegen" form in a schedule still showed the relay checkbox (and
+  the "(alleen relais)" option) after the relay was disabled — everywhere else it
+  was already hidden. It now follows the relay master switch like the rest of the UI.
+- **The default bell is now pre-filled when adding a bell time.** The sound
+  dropdown in a schedule's "add" form now pre-selects the default bell, so a new
+  bell time uses it without having to pick it each time.
+
+## [0.2.10] - 2026-09-10
+
+### Changed
+- **Setting WiFi from the onboarding AP is now obvious.** In AP mode the single
+  radio is busy broadcasting `ViejoolBel-Setup`, so it cannot scan and the network
+  list is empty — which looked broken. The WiFi picker now explains this when no
+  networks are found and automatically opens the manual entry so you just type the
+  school's SSID + password and connect; the device then switches over. The manual
+  option is relabelled "Netwerk handmatig invullen (of verborgen netwerk)".
+
+## [0.2.9] - 2026-09-10
+
+### Added
+- **Offline safety net.** If the device has no network for a configurable grace
+  period (default 15 minutes, 0 disables), the health monitor opens the
+  onboarding AP (`ViejoolBel-Setup`) so the device can be recovered on-site even
+  if its WiFi disappears entirely. A short outage (router reboot, brief hiccup)
+  resets the timer, so it never triggers on a blip; once the AP is up the monitor
+  stands down (the bell keeps ringing throughout — it needs no network). The grace
+  period is set in Instellingen → AP. Backed by `POST /api/ap/fallback` and a new
+  `ap_control.sh raise` command.
+
+## [0.2.8] - 2026-09-10
+
+### Fixed
+- **Joining a network failed with "802-11-wireless-security.key-mgmt: property is
+  missing".** `nmcli device wifi connect` reused a stale/partial saved profile
+  for the SSID (e.g. one generated by netplan without a key-management setting),
+  which cannot be activated. `set_wifi.sh` now deletes any existing profile for
+  the target SSID first and creates a fresh, complete one with the key management
+  set explicitly — trying WPA2/WPA (`wpa-psk`) then WPA3 (`sae`), and no key for
+  open networks. On failure the previous connection is restored, and an empty
+  password (open network) is now accepted.
+
+## [0.2.7] - 2026-09-10
+
+### Added
+- **Onboarding access point is now manageable from Instellingen.** A new AP
+  section shows whether the `ViejoolBel-Setup` fallback starts automatically when
+  no known WiFi is found, with a toggle to enable/disable it (it installs the
+  service on first enable), the SSID/password to connect to, and a **"Test AP nu"**
+  button. The test brings the AP up immediately and **schedules a guaranteed
+  reboot after 5 minutes first**, so testing the AP can never strand the device.
+  Backed by `GET /api/ap/status`, `POST /api/ap/enabled`, `POST /api/ap/test`
+  and a scoped `ap_control.sh` sudoers rule.
+
+### Changed
+- **The onboarding AP now releases wlan0 from NetworkManager** before bringing
+  hostapd/dnsmasq up (and `set_wifi.sh` hands it back), so the access point works
+  on NetworkManager-managed devices instead of fighting it. `viejoolbel-ap.sh`
+  also accepts `now` to force the AP up for a test.
+
+## [0.2.6] - 2026-09-10
+
+### Added
+- **WiFi diagnose (voor support).** A collapsible "Diagnose" section under WiFi in
+  Instellingen shows the device's raw `nmcli` output — version, radio state,
+  device status, rescan result, and the network list **with the FREQ/band column**
+  — run as the app's own account. It makes clear why a scan finds nothing
+  (a 2.4 GHz-only radio that cannot see 5 GHz networks, or an authorisation error)
+  so it can be diagnosed without shell access. Backed by
+  `GET /api/wifi/diagnostics`.
+
+## [0.2.5] - 2026-09-10
+
+### Fixed
+- **You could forget the network the device was connected to — and strand it.**
+  The saved-networks list showed a Vergeten button on the active connection;
+  deleting it dropped the device off WiFi and removed the profile, so it did not
+  reconnect on reboot. `forget()` now refuses to delete the active connection
+  (with a clear message), and the UI shows "in gebruik" instead of a button for
+  it.
+- **A failed WiFi switch could leave the device offline.** `set_wifi.sh` now
+  remembers the WiFi connection in use and, if joining the new network fails,
+  reactivates the previous one so the device stays reachable.
+
+## [0.2.4] - 2026-09-10
+
+### Changed
+- **WiFi is now managed the standard way — through NetworkManager, authorised by
+  a polkit rule.** The app runs as an unprivileged service account, which
+  NetworkManager otherwise only hands cached scan results (usually just the
+  connected AP) while refusing connection changes — so the picker looked empty
+  and "forget" failed with a sudo password prompt. A polkit rule
+  (`deploy/polkit/10-viejoolbel-networkmanager.rules`, installed by `install.sh`
+  and refreshed on update) grants the service account NetworkManager access, so
+  `nmcli` scan / connect / delete work directly. Forgetting a network no longer
+  goes through a sudo helper (`forget_wifi.sh` and its sudoers rule are removed).
+- **A clearer WiFi picker.** The dropdown is replaced by an OS-style list of
+  nearby networks — signal strength and a lock icon per row, the connected one
+  marked — where selecting a secured network reveals an inline password field and
+  a Verbind button. A "Verborgen netwerk…" option adds a network by name, and the
+  saved-networks list keeps its per-network Vergeten button.
+
+### Added
+- **WiFi selection and login in Instellingen.** The settings page now shows the
+  network the device is on, scans for nearby WiFi (signal strength, lock icon for
+  secured networks), and lets you join one by picking it and entering the
+  password — the same flow the onboarding portal uses, now available any time the
+  network changes. Backed by `GET /api/wifi/scan`, `GET /api/wifi/status` and
+  `POST /api/wifi/connect` (new `viejoolbel/wifi.py`), which reuse the existing
+  scoped `set_wifi.sh` sudoers rule and degrade cleanly on a non-Pi machine.
+- **Saved WiFi networks are listed and manageable in Instellingen.** A new list
+  under WiFi shows every network the device remembers (added by connecting, or
+  ahead of time by `preseed_wifi.sh`), marks the active one, and lets you forget
+  one you no longer need. Backed by `GET /api/wifi/saved` and
+  `POST /api/wifi/forget`, with a new scoped `forget_wifi.sh` sudoers rule for the
+  privileged delete.
+
+### Fixed
+- **The WiFi scan still showed only the connected network.** `nmcli device wifi
+  list --rescan yes` is all-or-nothing: when NetworkManager refuses the rescan
+  (it rate-limits them, e.g. right after connecting) the whole call fails and the
+  code fell back to the stale cache — which usually holds just the connected AP.
+  The rescan is now triggered on its own (a refusal is ignored) and the list is
+  read afterwards, with a short wait and re-read when the first read is still
+  sparse, so nearby networks actually appear.
+- **Forgetting a saved network failed with a raw `sudo: a password is required`
+  error** when the device had not yet refreshed its sudoers rule for the new
+  `forget_wifi.sh` helper. The WiFi actions now detect that specific sudo failure
+  and show an actionable message (update the device, or re-run `install.sh`)
+  instead of the cryptic sudo output.
+
+## [0.2.0] - 2026-09-09
+
+### Fixed
+- **The update button now works.** The systemd unit set `NoNewPrivileges=true`,
+  which propagates to child processes and blocks setuid binaries — so the
+  sudo-based updater failed with *"the 'no new privileges' flag is set"* and the
+  update did nothing. The flag is removed; privilege is still tightly scoped by
+  the exact-command sudoers allowlist.
+- **The overview date/day is in Dutch.** It was rendered with `strftime('%A')`,
+  which uses the server's C locale and so always printed an English weekday
+  (e.g. "Wednesday") on every device. It now reads e.g.
+  *"woensdag 9 september 2026 — 17:30"* via explicit Dutch date helpers, with no
+  dependency on a system `nl_NL` locale being installed.
+
+### Changed
+- **Updates now also refresh the systemd unit and sudoers rule.**
+  `apply_update.sh` re-installs `deploy/systemd/viejoolbel.service` and
+  `deploy/sudoers.d/viejoolbel` from the new release (with rollback), so
+  deployment-config fixes reach devices through the normal update, instead of
+  needing a manual `install.sh` re-run.
+
+### Notes
+- App-rendered times are 24-hour throughout. The bell-time editor keeps the
+  native time picker (`<input type="time">`); its 12h/24h *display* follows the
+  device's own language (a page cannot override it), while the value it stores is
+  always 24-hour `HH:MM`. Set the device/browser language to Dutch for a 24-hour
+  picker.
+
+## [0.1.7] - 2026-09-09
+
+### Added
+- **Relay master switch** in Instellingen. Schools that only ring through the
+  speaker can turn the relay off; when disabled it is hidden everywhere (Bel nu,
+  the schedule editor and today's plan) and is never energised, whatever an event
+  or caller requests.
+- **Default bell** in Geluiden. Mark one sound as the default; it is used by the
+  physical button on the device and is pre-selected in "Bel nu". Deleting the
+  default clears the setting.
+
+## [0.1.6] - 2026-09-09
+
+### Added
+- **Zero-touch WiFi for devices you ship but don't install yourself.** A new
+  `deploy/preseed_wifi.sh` stores one or more WiFi networks on the device before
+  it leaves your hands, so it joins the site's WiFi automatically on power-up and
+  nobody on-site has to use the setup portal — they just plug it in. Multiple
+  networks can be saved with a priority, so the same card works on your bench and
+  at the school. Documented in `docs/onboarding.md` and the printable Dutch
+  install guide.
+
+### Changed
+- **The installer now enables the on-site onboarding portal automatically.**
+  `deploy/install.sh` installs `hostapd`/`dnsmasq`, masks their packaged system
+  services (so they don't fight NetworkManager), and enables
+  `viejoolbel-ap.service` as an offline fallback. Preseeded WiFi still takes
+  precedence; the portal only appears when no known network is joined.
+
+### Fixed
+- **A stale/expired GitHub token blocked the update check with HTTP 401**, even on
+  a public repo (GitHub validates the token whenever one is sent). The check now
+  retries anonymously when a token is rejected, so a leftover bad token no longer
+  breaks updates on a public repository. The token is also whitespace-trimmed.
+- **The device showed the code's `__version__` (e.g. 0.1.3) instead of the release
+  it was actually running (e.g. v0.1.5)**, which also made the update check offer
+  the same version in a loop. `apply_update.sh` now records the installed tag and
+  the app reports that, so the displayed version matches the deployment and the
+  update check compares tag-to-tag.
+- **Default bell sounds were missing on devices first installed before the feature
+  existed.** They were only seeded into a brand-new database. Seeding now runs once
+  (guarded by a flag) and adds any missing defaults by name on upgrade, without
+  touching the user's own uploads.
+
 ## [0.1.3] - 2026-09-09
 
 ### Fixed
+- **A malformed line in the env file aborted every update.** `apply_update.sh`
+  *sourced* `/etc/viejoolbel/viejoolbel.env` with bash, so a value bash could not
+  source (e.g. a space after `=`, as in `VIEJOOLBEL_GITHUB_TOKEN= github_pat_…`)
+  made bash try to run the token as a command ("command not found") and stopped
+  the update before it began. The env file is now parsed safely with text tools
+  (`deploy/lib_env.sh`), tolerant of surrounding whitespace and quotes, and is
+  never executed.
 - **The browser kept running the old JavaScript after an update**, so UI fixes
   (like "Bel nu" no longer navigating to the raw JSON) appeared to have no effect
   until a hard refresh. Static assets are now cache-busted per version

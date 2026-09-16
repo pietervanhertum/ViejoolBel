@@ -96,6 +96,43 @@ def check_scheduler(alive: bool) -> Check:
     return Check("scheduler", Level.ERROR, "Scheduler is not running.")
 
 
+def check_writable(data_dir: Path) -> Check:
+    """Verify the data directory is actually writable, not just present.
+
+    A read-only filesystem — a worn SD card the kernel remounted ``ro`` after I/O
+    errors, or an accidental overlay/read-only mount — lets reads succeed while
+    every write silently fails, so schedule edits, the ring audit log and settings
+    are quietly lost. :func:`check_disk` only measures free space; this catches the
+    other half by round-tripping a tiny probe file.
+    """
+    probe = data_dir / ".viejoolbel-write-test"
+    try:
+        probe.write_text("ok")
+        probe.unlink()
+    except OSError as exc:
+        return Check(
+            "storage",
+            Level.ERROR,
+            f"{data_dir} is not writable ({exc.strerror or exc}). Schedule changes "
+            "and the ring log cannot be saved — the SD card may be read-only or failing.",
+        )
+    return Check("storage", Level.OK, "Storage is writable.")
+
+
+def check_hardware(hardware: object) -> Check:
+    """Flag when the bell is running on the simulation driver on a real device.
+
+    A silent fall-back to the mock driver (typically RPi.GPIO missing) makes every
+    ring 'succeed' while nothing physically fires — the baffling case where the
+    'Bel nu' button does nothing yet ``ffplay`` over SSH still makes sound. Surface
+    it as an error so it is visible on the dashboard instead of hidden in the log.
+    """
+    reason = getattr(hardware, "fallback_reason", None)
+    if reason:
+        return Check("hardware", Level.ERROR, str(reason))
+    return Check("hardware", Level.OK, f"Bell driver active ({type(hardware).__name__}).")
+
+
 def check_recent_rings(s: Session, now: dt.datetime, *, window_hours: int = 24) -> Check:
     since = now.astimezone(dt.UTC).replace(tzinfo=None) - dt.timedelta(hours=window_hours)
     failures = list(
@@ -118,11 +155,15 @@ def evaluate(
     data_dir: Path,
     scheduler_alive: bool,
     min_year: int,
+    hardware: object | None = None,
 ) -> HealthReport:
     checks = [
         check_scheduler(scheduler_alive),
         check_clock(now, min_year),
         check_recent_rings(s, now),
         check_disk(data_dir),
+        check_writable(data_dir),
     ]
+    if hardware is not None:
+        checks.append(check_hardware(hardware))
     return HealthReport(generated_at=now, checks=checks)

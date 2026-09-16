@@ -3,6 +3,62 @@
 Goal: bring a fresh device online at a school **without a screen, keyboard, or any
 existing internet** (FR-19).
 
+There are two paths, and you should prefer the first whenever you can:
+
+1. **Preseed the WiFi before you ship it (zero-touch).** If you already know the
+   school's WiFi, store it on the device *before* it leaves your hands. It then
+   joins that network by itself on power-up and nobody on-site has to configure
+   anything — they just plug it in. See **[Preseeding WiFi](#preseeding-wifi)**.
+2. **On-site access-point onboarding (fallback).** If the WiFi isn't known in
+   advance (or changes), the device brings up its own `ViejoolBel-Setup` network
+   and someone at the school types the WiFi into a captive portal. See
+   **[Access-point onboarding](#access-point-onboarding)**.
+
+The installer enables the fallback automatically, so path 2 is always there as a
+safety net even when you use path 1.
+
+## Preseeding WiFi
+
+Do this while you prepare the device at home/office — **not** at the school. The
+network doesn't have to be in range: the profile is stored and used the moment
+that SSID appears. Run [`deploy/preseed_wifi.sh`](../deploy/preseed_wifi.sh) once
+per network:
+
+Omit the password to be prompted for it securely (hidden input) — that way a
+password with shell-special characters (`!`, `%`, `$`, …) can't be mangled by the
+shell and stays out of `ps`/history:
+
+```bash
+# The school's WiFi (higher priority = preferred when both are in range):
+sudo ./deploy/preseed_wifi.sh "SchoolWiFi" "" 10   # prompts for the password
+
+# Optional: your own bench WiFi, so you can finish setup/testing at home too:
+sudo ./deploy/preseed_wifi.sh "WerkbankAP" "" 1
+```
+
+> If you do pass the password inline, use **single** quotes (`'!secret%pw?'`). In
+> an interactive bash shell a `!` inside **double** quotes triggers history
+> expansion *before* the script runs (`bash: !...: event not found`).
+
+Because it saves *multiple* networks, the same SD card works on your bench **and**
+at the school — it connects to whichever is in range.
+
+> **Ended up on the wrong network (e.g. a guest SSID)?** In the web UI under
+> Instellingen → WiFi, each saved network has a **Voorkeur** button: it raises that
+> network's autoconnect priority above the others and switches to it now, so no SSH
+> is needed. (Priority ties are why a guest network can win otherwise.) When the device arrives at
+the school it joins the school WiFi on its own and is reachable at
+`viejoolbel.local`; the setup portal below never has to appear.
+
+> Alternatively, Raspberry Pi Imager can preset a single WiFi network when you
+> flash the card. That works too, but `preseed_wifi.sh` lets you save several
+> networks and set which one wins, and you can run it on an already-prepared card.
+
+## Access-point onboarding
+
+Use this only when the WiFi wasn't preseeded. The installer enables it for you;
+this is what happens on-site.
+
 ## How it works
 At boot a small service (`viejoolbel-ap.service`) waits ~45 s for the Pi to join a
 known WiFi network. If none is found it reconfigures `wlan0` as its own access
@@ -17,7 +73,10 @@ the school's WiFi SSID + password. The device joins that network, tears the AP
 down, and is then reachable at `viejoolbel.local`.
 
 ## Enabling the AP service
-Copy the onboarding unit and enable it (the installer can be extended to do this):
+`deploy/install.sh` already installs and enables this unit for you (and masks the
+packaged `hostapd`/`dnsmasq` services so they don't fight NetworkManager). You only
+need the steps below to enable it by hand on a device installed before this was
+automatic:
 
 ```bash
 sudo cp deploy/ap-onboarding/viejoolbel-ap.service /etc/systemd/system/
@@ -39,6 +98,27 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 ```
+
+## Changing WiFi later (from the web UI)
+Once the device is reachable, WiFi is also manageable from **Instellingen → WiFi**:
+a list of nearby networks (signal strength, a lock icon for secured ones, the
+connected one marked); selecting a secured network reveals an inline password
+field, and saved networks can be forgotten. Handy when the school's WiFi changes.
+Note that switching to a different network briefly drops the page; the device is
+then reachable again at `viejoolbel.local`.
+
+### How the app is allowed to manage WiFi
+WiFi is managed through **NetworkManager**, the standard on Raspberry Pi OS /
+Debian Bookworm. Because the app runs as an unprivileged service account with no
+login session, NetworkManager would otherwise only return cached scan results and
+refuse connection changes. The installer therefore drops a polkit rule
+(`deploy/polkit/10-viejoolbel-networkmanager.rules` →
+`/etc/polkit-1/rules.d/`) that authorises the `viejoolbel` account for
+`org.freedesktop.NetworkManager.*`, so `nmcli` scan/connect/forget work directly —
+no sudo helper. Joining from the onboarding portal still uses `set_wifi.sh` (run
+via sudo) because it also tears the access point down. The polkit rule is
+refreshed on every update, so it reaches existing devices through the update
+button.
 
 ## Discovering the device on a LAN
 Once on the school WiFi, the device advertises itself via mDNS/Avahi as

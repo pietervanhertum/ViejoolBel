@@ -11,20 +11,33 @@
 #
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-TIMEOUT="${1:-45}"
+ARG="${1:-45}"
 
 has_link() { ip route | grep -q '^default'; }
 
-echo "[ap] Waiting up to ${TIMEOUT}s for an existing WiFi connection..."
-for _ in $(seq "${TIMEOUT}"); do
-  if has_link; then
-    echo "[ap] Network is up; onboarding AP not needed."
-    exit 0
-  fi
-  sleep 1
-done
+# "now" forces the AP up immediately (used by the "Test AP" button); a number is
+# how many seconds to wait for a normal WiFi connection before falling back to AP.
+if [[ "${ARG}" == "now" ]]; then
+  echo "[ap] Forcing onboarding access point up now."
+else
+  echo "[ap] Waiting up to ${ARG}s for an existing WiFi connection..."
+  for _ in $(seq "${ARG}"); do
+    if has_link; then
+      echo "[ap] Network is up; onboarding AP not needed."
+      exit 0
+    fi
+    sleep 1
+  done
+  echo "[ap] No network; starting onboarding access point."
+fi
 
-echo "[ap] No network; starting onboarding access point."
+# Release wlan0 from NetworkManager so it does not fight the AP (runtime-only, so
+# a reboot restores normal management). Fall back to stopping wpa_supplicant on
+# non-NM images.
+if command -v nmcli >/dev/null 2>&1; then
+  nmcli device disconnect wlan0 >/dev/null 2>&1 || true
+  nmcli device set wlan0 managed no >/dev/null 2>&1 || true
+fi
 systemctl stop wpa_supplicant 2>/dev/null || true
 ip link set wlan0 down
 ip addr flush dev wlan0

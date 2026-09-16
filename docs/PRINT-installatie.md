@@ -34,6 +34,11 @@ Deze gids is voor wie het systeem installeert (technisch). De losse
      zónder internet worden ingesteld (zie stap 6).
 4. Schrijf de kaart en steek ze in de Pi. Sluit speaker/relais aan en start op.
 
+> 💡 **Ga je het toestel opsturen naar een school waar je zelf niet komt?**
+> Stel de schoolwifi dan **op voorhand** in (zie stap 6a). Dan verbindt het
+> toestel zich vanzelf zodra het daar wordt aangezet — de persoon ter plaatse
+> hoeft dan enkel de stekker in te steken.
+
 ## 3. Software installeren
 
 Verbind met de Pi (via SSH: `ssh pi@viejoolbel.local`) en voer uit:
@@ -59,12 +64,58 @@ draait ViejoolBel en start het **vanzelf opnieuw op na een stroomonderbreking**.
 ## 5. Eerste keer inloggen
 
 - Open op je telefoon/computer: **`http://viejoolbel.local:8080`**
-- Log in met **`admin`** / **`changeme`**.
-- **Wijzig meteen het wachtwoord** (het dashboard blijft hiervoor waarschuwen).
+- Log in met gebruikersnaam **`admin`** en wachtwoord **`dirkteur`**.
+- **Wijzig het wachtwoord** als je het wil aanpassen (Instellingen →
+  "Wachtwoord wijzigen"). Zolang het nog op de standaardwaarde staat, blijft het
+  dashboard hiervoor waarschuwen.
 
-## 6. Zonder internet installeren (headless onboarding)
+> 🔒 Dit wachtwoord (`admin` / `dirkteur`) staat **enkel** in deze
+> installatiegids, niet in de gebruikershandleiding voor het schoolpersoneel.
+> Geef het door aan wie het toestel mag beheren.
 
-Als er nog geen wifi is: het toestel maakt zelf een wifi-netwerk aan.
+## 6. Installeren zonder dat er al wifi is
+
+Er zijn twee manieren. Kies **6a** als je de schoolwifi al kent — dan hoeft er
+ter plaatse niemand iets in te stellen. **6b** is de terugval als de wifi niet
+op voorhand gekend is.
+
+### 6a. Wifi op voorhand instellen (aanbevolen — "gewoon inpluggen")
+
+Doe dit **thuis/op kantoor terwijl je het toestel klaarmaakt**, niet op school.
+Het netwerk hoeft niet in de buurt te zijn: het toestel onthoudt de gegevens en
+verbindt zodra dat netwerk in bereik komt. Voer op de Pi uit:
+
+Laat het **wachtwoord weg** — dan vraagt het script er veilig naar (verborgen
+invoer). Zo kan een wachtwoord met bijzondere tekens (`!`, `%`, `$`, `?`, …) nooit
+door de shell verminkt worden, en belandt het niet in `ps` of je shell-geschiedenis:
+
+```bash
+# De wifi van de school (hoger getal = voorkeur als er meerdere in bereik zijn):
+sudo /opt/viejoolbel/current/deploy/preseed_wifi.sh "SchoolWifi" "" 10
+# → typ het wachtwoord in als erom gevraagd wordt
+
+# Optioneel: je eigen werkbank-wifi, zodat je thuis nog kunt testen:
+sudo /opt/viejoolbel/current/deploy/preseed_wifi.sh "WerkbankAP" "" 1
+```
+
+> ⚠️ Geef je het wachtwoord tóch op de commandoregel mee, gebruik dan **enkele**
+> aanhalingstekens: `'!SG_PersOn33L%3990?'`. Met **dubbele** quotes verwerkt bash
+> een `!` als geschiedenis-expansie *vóór* het script draait — je krijgt dan
+> `bash: !...: event not found` en het script draait niet eens.
+
+Je kunt dit meerdere keren uitvoeren voor meerdere netwerken; het toestel kiest
+zelf welk netwerk in bereik is. Stuur het toestel op → de school steekt enkel de
+stekker in → het verbindt vanzelf en is bereikbaar op `viejoolbel.local`. De
+instelpagina hieronder verschijnt dan niet.
+
+> Alternatief kun je in **Raspberry Pi Imager** (stap 2) één wifi-netwerk
+> vooraf invullen. Dat werkt ook, maar met het script kun je meerdere netwerken
+> bewaren en de voorkeur bepalen — en het werkt ook op een reeds voorbereide kaart.
+
+### 6b. Instellen ter plaatse via het toestel zelf (terugval)
+
+Als er geen wifi vooraf is ingesteld, maakt het toestel zélf een wifi-netwerk aan
+(dit staat standaard aan na de installatie):
 
 1. Zoek op je telefoon het wifi-netwerk **`ViejoolBel-Setup`** (wachtwoord staat
    op het toestel-label, standaard `belsetup2025`).
@@ -73,7 +124,12 @@ Als er nog geen wifi is: het toestel maakt zelf een wifi-netwerk aan.
 3. Vul de wifi van de school in. Het toestel verbindt en is daarna bereikbaar
    op `viejoolbel.local`.
 
-*(Zie `docs/onboarding.md` om de onboarding-service te activeren.)*
+*(Zie `docs/onboarding.md` voor de details.)*
+
+> 💡 **Verbindt het toestel met het verkeerde netwerk (bv. een gastnetwerk)?**
+> Ga naar **Instellingen → WiFi**: bij elk opgeslagen netwerk staat een knop
+> **"Voorkeur"**. Die geeft dat netwerk voorrang op alle andere én schakelt er
+> meteen naartoe — geen SSH nodig. De keuze blijft ook na een herstart gelden.
 
 ## 7. Support op afstand (zonder aan het schoolnetwerk te raken)
 
@@ -98,8 +154,41 @@ In de webinterface, onderaan bij **"Meldingen bij problemen"**:
 - **Heartbeat-URL**: waarschuwt jou als het toestel **helemaal offline of uit**
   gaat (bv. een gratis check op `https://healthchecks.io`). Dit is de enige manier
   om een uitgevallen of stroomloos toestel te detecteren.
+- **"Stuur een info-melding bij het opstarten"** (standaard aan): het toestel
+  stuurt bij elke start een info-bericht met versie, tijd, tijd-sinds-boot en het
+  verbonden wifi-netwerk. Zo zie je het terugkomen na een stroompanne of een
+  zelf-herstel-herstart.
 
 Klik op **"Stuur testmelding"** om te controleren of het werkt.
+
+> 💡 Zet **beide** in: de webhook vangt fouten terwijl het toestel online is; de
+> heartbeat vangt een toestel dat volledig wegvalt. Zie `docs/monitoring.md` voor
+> de volledige opzet.
+
+### Achteraf uitzoeken wat er gebeurde (post-mortem)
+
+Onder **"Recente systeemgebeurtenissen"** (in dezelfde sectie) staat een
+duurzaam logboek dat een **herstart overleeft**: je ziet er wanneer een controle
+faalde, wanneer het vangnet het setup-netwerk opende, en elke keer dat het toestel
+opstartte. Handig om achteraf te reconstrueren wat er misging zonder in
+`journalctl` te hoeven duiken.
+
+## 8b. Zelf-herstel bij netwerkuitval (Instellingen → AP)
+
+Het toestel belt volledig **lokaal** — een netwerkstoring stopt de bel dus niet.
+Om het toestel toch **bereikbaar** te houden en zichzelf te laten herstellen, staan
+er twee instellingen onder **Instellingen → AP**:
+
+- **"Open de AP na … minuten zonder netwerk"** (standaard 15, 0 = uit): valt de
+  wifi-verbinding langer weg, dan opent het toestel het setup-netwerk
+  `ViejoolBel-Setup` zodat je het ter plaatse kunt herstellen.
+- **"Herstart daarna vanzelf na … minuten"** (standaard 10, 0 = uit): na het
+  openen van de AP **herstart** het toestel automatisch en probeert het opnieuw op
+  de schoolwifi te komen — een tijdelijke storing vereist zo geen plaatsbezoek.
+
+> De bel blijft ondertussen gewoon rinkelen; dit bepaalt enkel de
+> netwerk­bereikbaarheid. Zet de herstart-tijd op 0 als je niet wil dat het toestel
+> uit zichzelf herstart.
 
 ## 9. Bijwerken (update)
 
@@ -110,7 +199,14 @@ sudo /opt/viejoolbel/current/deploy/apply_update.sh v0.2.0
 ```
 
 Updates zijn veilig: bij een probleem draait het toestel **automatisch terug**
-naar de vorige werkende versie.
+naar de vorige werkende versie. Lijkt er niets te gebeuren na een update? Klik in
+de webinterface op **"Toon updatelog"** (bij Instellingen) om te zien wat er
+gebeurd is — daar staat de laatste stap en een eventuele fout.
+
+> 💡 De **versie** die het toestel écht draait, staat onderaan in de
+> webinterface. Ververst je na een update de pagina en zie je nog de oude
+> UI? Doe een **harde herlaad** (Ctrl+F5, of op de telefoon: pagina volledig
+> sluiten en opnieuw openen).
 
 ## 10. Handige commando's
 
@@ -120,12 +216,65 @@ sudo systemctl restart viejoolbel    # herstarten
 sudo systemctl status viejoolbel     # status + laatste gezondheid
 ```
 
+## 11. Instellen in de webinterface (na de installatie)
+
+Deze stappen doe je in de browser, ná stap 5. Ze bepalen hoe de bel bij deze
+school precies moet werken.
+
+### Uitvoer: audio en/of relais
+
+Ga naar **Instellingen → Uitvoer**. Hier zet je aan wat dit toestel gebruikt:
+
+- **Speaker/audio** aan als de school via een luidspreker belt.
+- **Relais** aan als het toestel de bestaande elektrische schoolbel schakelt.
+
+Belt de school **enkel via de speaker**? Zet het **relais uit**. Dan verdwijnt
+het relais overal uit beeld (bij "Bel nu", in het rooster en bij het plan van
+vandaag) en wordt het nooit geschakeld — dat maakt het scherm eenvoudiger voor
+het personeel.
+
+### Standaardbel kiezen
+
+Ga naar **Geluiden** en klik bij één geluid op **"Maak standaard"**. Die
+standaardbel wordt gebruikt door de **fysieke knop** op het toestel en staat
+voorgeselecteerd bij "Bel nu". Zo hoeft het personeel niets te kiezen.
+
+### Rooster, kalender en volume
+
+- Vul onder **Roosters** het weekrooster en de beltijden in.
+- Vul onder **Kalender** de vakanties en vrije dagen in.
+- Stel onder **Instellingen** het **volume** in (voor de speaker).
+
+### Back-up en herstellen
+
+Onder **Instellingen** kun je met **"Back-up"** de volledige configuratie
+(roosters, kalender, geluidsnamen en instellingen) als één bestand downloaden.
+Bewaar dat bestand goed. Met **"Herstellen"** zet je die configuratie terug op
+dit of een vervangend toestel — geluiden worden op naam teruggekoppeld.
+
 ---
 
-### Checklist na installatie
-- [ ] Wachtwoord gewijzigd
+### Checklist eerste gebruik (in de webinterface)
+Doe dit onmiddellijk na het inloggen, vóór je het toestel oplevert:
+- [ ] Ingelogd op `viejoolbel.local:8080` met `admin` / `dirkteur`
+- [ ] Wachtwoord gewijzigd (of bewust op standaard gelaten en doorgegeven)
+- [ ] **Uitvoer** ingesteld (speaker en/of relais; relais uit als enkel audio)
+- [ ] **Standaardbel** aangeduid bij Geluiden
+- [ ] Weekrooster (Roosters) ingevuld
+- [ ] Vakanties/vrije dagen (Kalender) ingevuld
+- [ ] Volume ingesteld en getest via **Zelftest**
+- [ ] **Back-up** gedownload en veilig bewaard
+
+---
+
+### Checklist na installatie (technisch)
+- [ ] Wifi verbindt automatisch (vooraf ingesteld met `preseed_wifi.sh`, of via
+      `ViejoolBel-Setup`) en toestel is bereikbaar op `viejoolbel.local`
+- [ ] Installatiescript zonder fouten doorlopen; dienst draait
+      (`sudo systemctl status viejoolbel`)
 - [ ] DS3231 RTC werkt (tijd klopt na herstart zonder internet)
-- [ ] Belgeluid getest via **Zelftest**
-- [ ] Weekrooster + vakanties ingevuld
-- [ ] Meldingen (webhook + heartbeat) getest
+- [ ] Toestel start vanzelf op na een stroomonderbreking (test: stekker uit/in)
+- [ ] Meldingen (webhook + heartbeat) ingesteld en getest
+- [ ] Opstart-melding ontvangen (verschijnt bij het herstarten van de dienst)
+- [ ] Zelf-herstel gecontroleerd (Instellingen → AP: vangnet + herstart-tijd)
 - [ ] Tailscale actief voor support op afstand

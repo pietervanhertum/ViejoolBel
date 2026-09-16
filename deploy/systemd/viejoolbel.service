@@ -2,6 +2,12 @@
 Description=ViejoolBel school bell system
 After=network-online.target sound.target time-sync.target
 Wants=network-online.target
+# Pull in + order after time synchronisation when it is available. This is a soft
+# Wants (not Requires) and time-sync.target is passive, so an OFFLINE device still
+# boots and rings; the app also waits briefly for the clock at startup and re-plans
+# on a later NTP correction (see viejoolbel/scheduler.py). A DS3231 RTC remains the
+# real fix for an offline site with power cuts (docs/hardware.md).
+Wants=time-sync.target
 # Never stop trying to restart the bell service, even after repeated crashes.
 StartLimitIntervalSec=0
 
@@ -25,10 +31,21 @@ TimeoutStartSec=60
 # The health monitor pings the watchdog every ~10 s; 30 s gives ample margin.
 WatchdogSec=30
 # Hardening
-NoNewPrivileges=true
+# NOTE: we deliberately do NOT set NoNewPrivileges=true. The web app performs its
+# privileged actions (self-update, service restart, reboot, WiFi changes) by
+# invoking a handful of tightly-scoped helpers through sudo (see
+# deploy/sudoers.d/viejoolbel). NoNewPrivileges propagates to every child process
+# and blocks setuid binaries, so with it set sudo fails with "the 'no new
+# privileges' flag is set" and the update button does nothing. The privilege
+# surface is instead constrained by the exact-command sudoers allowlist (NFR-4).
 ProtectSystem=full
 ProtectHome=true
 PrivateTmp=true
+# The in-app updater (deploy/apply_update.sh, run as root via sudo) refreshes the
+# unit, sudoers rule and polkit rule from each new release. ProtectSystem=full
+# otherwise makes /etc read-only for the service and its children, so expose just
+# these paths read-write; everything else under /etc stays protected.
+ReadWritePaths=/etc/systemd/system /etc/sudoers.d /etc/polkit-1/rules.d
 
 [Install]
 WantedBy=multi-user.target

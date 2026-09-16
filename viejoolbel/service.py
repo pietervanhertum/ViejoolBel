@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from .bell import BellController
 from .config import Settings
-from .db import init_engine, install_default_sounds, session_scope
+from .db import get_setting, init_engine, install_default_sounds, session_scope
 from .hardware import make_hardware
 from .hardware.base import BellHardware
 from .models import RingSource
@@ -38,13 +38,21 @@ class ButtonWatcher:
     def stop(self) -> None:
         self._stop.set()
 
+    def _default_sound_id(self) -> int | None:
+        with session_scope() as s:
+            raw = get_setting(s, "default_sound_id", "")
+        try:
+            return int(raw) if raw else None
+        except ValueError:
+            return None
+
     def _loop(self) -> None:
         while not self._stop.is_set():
             try:
                 if self._hw.read_button():
                     self._controller.ring(
                         source=RingSource.BUTTON,
-                        sound_id=None,
+                        sound_id=self._default_sound_id(),
                         duration=8,
                         use_audio=True,
                         use_relay=True,
@@ -69,11 +77,21 @@ class Service:
             button_pin=settings.gpio_button_pin,
             led_pin=settings.gpio_led_pin,
             amp_warmup_seconds=settings.amp_warmup_seconds,
+            audio_device=settings.audio_device,
         )
         self.controller = BellController(self.hardware, settings)
-        self.scheduler = BellScheduler(self.controller, settings.timezone)
+        self.scheduler = BellScheduler(
+            self.controller,
+            settings.timezone,
+            startup_sync_wait_seconds=settings.startup_sync_wait_seconds,
+            watchdog_seconds=settings.replan_watchdog_seconds,
+        )
         self.button = ButtonWatcher(self.hardware, self.controller)
-        self.monitor = HealthMonitor(settings, scheduler_is_alive=self.scheduler.is_alive)
+        self.monitor = HealthMonitor(
+            settings,
+            scheduler_is_alive=self.scheduler.is_alive,
+            hardware=self.hardware,
+        )
 
     def start(self) -> None:
         self.scheduler.start()

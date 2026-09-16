@@ -30,6 +30,17 @@ class Settings(BaseSettings):
     # the installer generates a random one.
     secret_key: str = "dev-insecure-change-me"
 
+    # --- Public access via Cloudflare Access (optional) ---
+    # When BOTH are set, requests that arrive through the Cloudflare Tunnel (i.e.
+    # from loopback) must carry a valid Cloudflare Access JWT, verified against
+    # your team's public keys. Direct access on the LAN (viejoolbel.local:8080)
+    # is unaffected and still uses the app password. Empty = disabled.
+    # See docs/public-access.md. Requires the [access] extra (PyJWT); if it is
+    # configured but PyJWT is missing, tunnel requests are DENIED (fail closed)
+    # while local access and the bell keep working.
+    cf_access_team_domain: str = ""  # e.g. "ottorosie.cloudflareaccess.com"
+    cf_access_aud: str = ""  # Application Audience (AUD) tag from the Access app
+
     # --- Localisation ---
     timezone: str = "Europe/Brussels"
 
@@ -43,6 +54,10 @@ class Settings(BaseSettings):
     gpio_led_pin: int = 23
     # Seconds to power the amplifier before/after audio playback (anti-hum).
     amp_warmup_seconds: float = 1.0
+    # ALSA output device for playback (e.g. "plughw:CARD=Headphones" for the Pi's
+    # analog jack, or "default"). Empty = ALSA default. Set this when the sound
+    # goes to the wrong output (e.g. HDMI). UI/env-editable via VIEJOOLBEL_AUDIO_DEVICE.
+    audio_device: str = ""
 
     # --- Updates ---
     update_repo: str = "https://github.com/pietervanhertum/ViejoolBel"
@@ -50,6 +65,20 @@ class Settings(BaseSettings):
     releases_dir: Path = Field(default=Path("/opt/viejoolbel/releases"))
     # Privileged helper that performs the atomic swap + rollback (see updater.py).
     update_script: Path = Field(default=Path("/opt/viejoolbel/current/deploy/apply_update.sh"))
+    # Privileged helper that joins a WiFi network + tears down the onboarding AP
+    # (see wifi.py). Invoked via the scoped sudoers rule.
+    wifi_script: Path = Field(default=Path("/opt/viejoolbel/current/deploy/set_wifi.sh"))
+    # Privileged helper that manages the onboarding access point (see ap.py).
+    ap_control_script: Path = Field(
+        default=Path("/opt/viejoolbel/current/deploy/ap_control.sh")
+    )
+    # Safety net: if the device has no network for this many minutes, open the
+    # onboarding AP so it can be recovered on-site. 0 disables it. UI-editable.
+    ap_fallback_minutes: int = 15
+    # Self-heal: after the safety net opens the AP, reboot after this many minutes
+    # so the device retries its WiFi on its own (a transient outage then needs no
+    # site visit). 0 keeps the AP up until a manual reboot (legacy). UI-editable.
+    ap_fallback_recovery_minutes: int = 10
     # Optional GitHub token (read-only) so the update check + clone work on a
     # PRIVATE repository. Stored in /etc/viejoolbel/viejoolbel.env. See
     # docs/github-auth.md.
@@ -68,9 +97,24 @@ class Settings(BaseSettings):
     # this is what catches a device that is fully offline or powered down.
     heartbeat_url: str = ""
     heartbeat_interval_seconds: float = 900.0
+    # Send an "info" webhook notice when the service starts (with time, uptime and
+    # the connected WiFi network). Also makes reboots visible. UI-editable.
+    notify_on_start: bool = True
     # Minimum plausible year; a system clock below this means the clock is unset
     # (no RTC, no NTP) and rings would be wrong (see docs/hardware.md).
     min_plausible_year: int = 2024
+
+    # --- Scheduler robustness (no-RTC devices) ---
+    # On boot a device with no RTC starts with a stale clock; NTP then steps it,
+    # possibly across a whole day (e.g. after transport). Before the first plan,
+    # wait up to this many seconds for the clock to synchronise so we plan against
+    # the correct day. Bounded so an OFFLINE device still starts. 0 disables it.
+    # Only applies where systemd-timesyncd is present (no-op elsewhere, incl. tests).
+    startup_sync_wait_seconds: float = 30.0
+    # Safety net: how often to check that today's plan is still current and re-plan
+    # if the wall clock has moved to another day or jumped (NTP step). This is what
+    # makes a bell survive a stale-clock boot after the clock is later corrected.
+    replan_watchdog_seconds: float = 60.0
 
     @property
     def db_path(self) -> Path:

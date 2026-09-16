@@ -4,3 +4,4 @@ viejoolbel ALL=(root) NOPASSWD: /opt/viejoolbel/current/deploy/apply_update.sh *
 viejoolbel ALL=(root) NOPASSWD: /bin/systemctl restart viejoolbel.service
 viejoolbel ALL=(root) NOPASSWD: /sbin/reboot
 viejoolbel ALL=(root) NOPASSWD: /opt/viejoolbel/current/deploy/set_wifi.sh *
+viejoolbel ALL=(root) NOPASSWD: /opt/viejoolbel/current/deploy/ap_control.sh *

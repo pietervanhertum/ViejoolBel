@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from .models import (
@@ -15,6 +15,7 @@ from .models import (
     Base,
     CalendarRuleKind,
     DayType,
+    EventLog,
     Setting,
     Sound,
     WeekdayDefault,
@@ -82,6 +83,30 @@ def set_setting(s: Session, key: str, value: str) -> None:
         row.value = value
 
 
+# Keep at most this many event-log rows so the table can never grow without bound
+# on a device that runs for years.
+_EVENT_LOG_MAX_ROWS = 1000
+
+
+def record_event(
+    s: Session, kind: str, detail: str = "", *, level: str = "info"
+) -> EventLog:
+    """Append an operational event to the durable :class:`EventLog` and trim the
+    table to :data:`_EVENT_LOG_MAX_ROWS`. Never raises on trim failure."""
+    event = EventLog(kind=kind, level=level, detail=detail[:500])
+    s.add(event)
+    s.flush()
+    # Trim oldest rows beyond the cap (cheap: only runs the delete when over).
+    total = s.scalar(select(func.count()).select_from(EventLog)) or 0
+    if total > _EVENT_LOG_MAX_ROWS:
+        cutoff = s.scalar(
+            select(EventLog.id).order_by(EventLog.id.desc()).offset(_EVENT_LOG_MAX_ROWS)
+        )
+        if cutoff is not None:
+            s.query(EventLog).filter(EventLog.id <= cutoff).delete(synchronize_session=False)
+    return event
+
+
 def migrate(s: Session) -> None:
     """Very small forward-only migration runner keyed on the ``schema_version``
     setting. New migrations append an ``if current < N`` block."""
@@ -113,20 +138,28 @@ def seed_defaults(s: Session) -> None:
 
 
 def install_default_sounds(s: Session, sounds_dir: Path) -> int:
-    """Copy the bundled starter sounds into *sounds_dir* and register them, once.
+    """Install the bundled starter sounds **once**, adding only the ones missing.
 
-    No-op when any sound already exists, so it never overwrites the user's own
-    uploads. Returns the number of sounds installed.
+    Guarded by a one-time ``default_sounds_seeded`` flag so it runs a single time —
+    including on an upgrade of a database that predates this feature (that is why a
+    device installed at 0.1.0 had no default sounds). It adds each default only if
+    no sound with that name exists, so it never duplicates or overwrites the user's
+    own uploads, and after seeding it will not re-add sounds the user later deletes.
+    Returns the number of sounds installed.
     """
-    if s.scalar(select(Sound).limit(1)) is not None:
+    if get_setting(s, "default_sounds_seeded", "") == "1":
         return 0
+    existing = set(s.scalars(select(Sound.name)))
     sounds_dir.mkdir(parents=True, exist_ok=True)
     installed = 0
     for name, filename, duration, is_alarm in DEFAULT_SOUNDS:
+        if name in existing:
+            continue
         src = _ASSETS_SOUNDS_DIR / filename
         if not src.exists():
             continue
         shutil.copyfile(src, sounds_dir / filename)
         s.add(Sound(name=name, filename=filename, default_duration=duration, is_alarm=is_alarm))
         installed += 1
+    set_setting(s, "default_sounds_seeded", "1")
     return installed

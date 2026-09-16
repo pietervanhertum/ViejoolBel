@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import json
+
+from sqlalchemy import select
+
+from viejoolbel import wifi
 from viejoolbel.db import session_scope, set_setting
+from viejoolbel.models import EV_SERVICE_STARTED, EventLog
 from viejoolbel.monitor import HealthMonitor
 from viejoolbel.notify import Notifier
 
@@ -68,3 +74,44 @@ def test_last_report_is_stored(initialized_db, settings):
     mon = _monitor(settings, alive, RecordingTransport())
     mon.evaluate_once()
     assert mon.last_report is not None and mon.last_report.ok
+
+
+def test_startup_notice_records_event_and_alerts(initialized_db, settings, monkeypatch):
+    monkeypatch.setattr(wifi, "current_ssid", lambda: "SchoolWiFi")
+    with session_scope() as s:
+        set_setting(s, "notify_webhook_url", "https://ntfy.sh/test")
+    t = RecordingTransport()
+    mon = _monitor(settings, {"alive": True}, t)
+
+    mon._startup_notice()
+
+    # Durable event recorded, with the WiFi network in the detail.
+    with session_scope() as s:
+        events = list(s.scalars(select(EventLog).where(EventLog.kind == EV_SERVICE_STARTED)))
+    assert len(events) == 1
+    assert "WiFi: SchoolWiFi" in events[0].detail and events[0].level == "info"
+
+    # Info webhook sent with the information tag.
+    assert len(t.posts) == 1
+    _url, payload, headers = t.posts[0]
+    body = json.loads(payload)
+    assert body["level"] == "info" and headers.get("Tags") == "information_source"
+    assert "gestart" in body["message"]
+
+
+def test_startup_notice_records_event_but_no_alert_when_disabled(
+    initialized_db, settings, monkeypatch
+):
+    monkeypatch.setattr(wifi, "current_ssid", lambda: None)
+    with session_scope() as s:
+        set_setting(s, "notify_webhook_url", "https://ntfy.sh/test")
+        set_setting(s, "notify_on_start", "0")
+    t = RecordingTransport()
+    mon = _monitor(settings, {"alive": True}, t)
+
+    mon._startup_notice()
+
+    with session_scope() as s:
+        events = list(s.scalars(select(EventLog).where(EventLog.kind == EV_SERVICE_STARTED)))
+    assert len(events) == 1  # still logged for the post-mortem trail
+    assert t.posts == []  # but no webhook when disabled

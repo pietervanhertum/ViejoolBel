@@ -15,13 +15,16 @@ TAG="${1:?usage: apply_update.sh <git-tag>}"
 OPT_DIR="/opt/viejoolbel"
 RELEASES_DIR="${OPT_DIR}/releases"
 ENV_FILE="/etc/viejoolbel/viejoolbel.env"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 
-# Load VIEJOOLBEL_UPDATE_REPO and (for a private repo) VIEJOOLBEL_GITHUB_TOKEN.
-if [[ -f "${ENV_FILE}" ]]; then
-  set -a; . "${ENV_FILE}"; set +a
-fi
+# Read VIEJOOLBEL_UPDATE_REPO and (for a private repo) VIEJOOLBEL_GITHUB_TOKEN
+# from the env file *safely* — never source it (see lib_env.sh).
+# shellcheck source=lib_env.sh
+. "${HERE}/lib_env.sh"
+VIEJOOLBEL_GITHUB_TOKEN="$(viejoolbel_read_env "${ENV_FILE}" VIEJOOLBEL_GITHUB_TOKEN)"
 
-REPO="${VIEJOOLBEL_UPDATE_REPO:-https://github.com/pietervanhertum/ViejoolBel}"
+REPO="$(viejoolbel_read_env "${ENV_FILE}" VIEJOOLBEL_UPDATE_REPO)"
+REPO="${REPO:-https://github.com/pietervanhertum/ViejoolBel}"
 NEW_DIR="${RELEASES_DIR}/${TAG}"
 PREV_TARGET="$(readlink -f "${OPT_DIR}/current" || true)"
 
@@ -48,16 +51,73 @@ health_check() {
     "$1/.venv/bin/python" -c "from viejoolbel.service import Service; from viejoolbel.config import Settings; s=Service(Settings(hardware='mock')); s.build_app(); s.stop(); print('ok')"
 }
 
+# Re-install the systemd unit and sudoers rule from a release directory, so that
+# deployment-config fixes (e.g. a changed unit) reach the device through the
+# normal update instead of needing a manual install.sh re-run. Best-effort: a
+# failure here is logged, never fatal, so an update is never blocked by it.
+#   * The sudoers file is syntax-checked with visudo BEFORE it replaces the live
+#     one — a malformed rule could otherwise lock out sudo entirely.
+#   * Writes land in /etc, which the unit exposes to this root helper via
+#     ReadWritePaths (ProtectSystem=full otherwise makes /etc read-only for the
+#     service and its children).
+install_deploy_config() {
+  local src="$1"
+  local unit_src="${src}/deploy/systemd/viejoolbel.service"
+  local sudo_src="${src}/deploy/sudoers.d/viejoolbel"
+  local polkit_src="${src}/deploy/polkit/10-viejoolbel-networkmanager.rules"
+
+  if [[ -f "${unit_src}" ]]; then
+    if install -m 644 "${unit_src}" /etc/systemd/system/viejoolbel.service 2>/dev/null; then
+      systemctl daemon-reload || true
+      log "Refreshed systemd unit from ${src}."
+    else
+      log "WARN: could not write the systemd unit (left as-is)."
+    fi
+  fi
+
+  if [[ -f "${sudo_src}" ]]; then
+    if ! visudo -cf "${sudo_src}" >/dev/null 2>&1; then
+      log "WARN: new sudoers rule failed validation; keeping the current one."
+    elif install -m 440 "${sudo_src}" /etc/sudoers.d/viejoolbel 2>/dev/null; then
+      log "Refreshed sudoers rule from ${src}."
+    else
+      log "WARN: could not write the sudoers rule (left as-is)."
+    fi
+  fi
+
+  # Refresh the polkit rule that authorises the service account to manage WiFi
+  # through NetworkManager. polkit auto-reloads rules.d, so no explicit reload.
+  if [[ -f "${polkit_src}" ]]; then
+    if install -d /etc/polkit-1/rules.d 2>/dev/null \
+       && install -m 644 "${polkit_src}" \
+            /etc/polkit-1/rules.d/10-viejoolbel-networkmanager.rules 2>/dev/null; then
+      log "Refreshed polkit rule from ${src}."
+    else
+      log "WARN: could not write the polkit rule (left as-is)."
+    fi
+  fi
+}
+
 log "Fetching ${TAG} from ${REPO}"
 rm -rf "${NEW_DIR}"
 git clone --depth 1 --branch "${TAG}" "$(clone_url)" "${NEW_DIR}"
 
 log "Building virtualenv (this needs internet for pip)"
-python3 -m venv "${NEW_DIR}/.venv"
-"${NEW_DIR}/.venv/bin/pip" install --upgrade pip wheel
+# --system-site-packages mirrors install.sh so RPi.GPIO stays available via the
+# distro's python3-rpi.gpio even when the Pi extra can't be built/fetched.
+python3 -m venv --system-site-packages "${NEW_DIR}/.venv"
+# --no-cache-dir: pip's default $HOME/.cache (/root/.cache) can be read-only,
+# which by itself fails the RPi.GPIO wheel build and kills the bell.
+PIP="${NEW_DIR}/.venv/bin/pip"
+"${PIP}" install --no-cache-dir --upgrade pip wheel
 # Try the Pi extra (RPi.GPIO) first; fall back to the base install off-device.
-"${NEW_DIR}/.venv/bin/pip" install "${NEW_DIR}[pi]" \
-  || "${NEW_DIR}/.venv/bin/pip" install "${NEW_DIR}"
+# WARN loudly on fall-back: without RPi.GPIO the new release runs the simulation
+# driver and the bell/relay go dead (the health check will flag it post-swap too).
+if ! "${PIP}" install --no-cache-dir "${NEW_DIR}[pi]"; then
+  log "WARNING: Pi extra (RPi.GPIO) failed to install; falling back to base install."
+  log "         The bell/relay will NOT work until RPi.GPIO is available."
+  "${PIP}" install --no-cache-dir "${NEW_DIR}"
+fi
 
 log "Running health check on the new release"
 if ! health_check "${NEW_DIR}"; then
@@ -69,6 +129,17 @@ fi
 log "Flipping 'current' symlink to ${NEW_DIR}"
 ln -sfn "${NEW_DIR}" "${OPT_DIR}/current"
 chown -R viejoolbel:viejoolbel "${NEW_DIR}"
+
+# Record the installed tag so the app reports the deployed version (and the update
+# check compares tag-to-tag), even when the code's __version__ lags the tag.
+DATA_DIR="$(viejoolbel_read_env "${ENV_FILE}" VIEJOOLBEL_DATA_DIR)"
+DATA_DIR="${DATA_DIR:-/var/lib/viejoolbel}"
+mkdir -p "${DATA_DIR}"
+printf '%s' "${TAG}" > "${DATA_DIR}/installed_version"
+chown viejoolbel:viejoolbel "${DATA_DIR}/installed_version" 2>/dev/null || true
+
+log "Refreshing deployment config (systemd unit + sudoers) from ${TAG}"
+install_deploy_config "${NEW_DIR}"
 
 log "Restarting service"
 systemctl restart viejoolbel.service
@@ -82,6 +153,9 @@ fi
 log "Service failed to come up; rolling back."
 if [[ -n "${PREV_TARGET}" ]]; then
   ln -sfn "${PREV_TARGET}" "${OPT_DIR}/current"
+  # Restore the previous release's unit/sudoers too, in case a changed unit is
+  # what kept the new version from starting.
+  install_deploy_config "${PREV_TARGET}"
   systemctl restart viejoolbel.service
   log "Rolled back to ${PREV_TARGET}."
 fi

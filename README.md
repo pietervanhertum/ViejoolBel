@@ -22,11 +22,13 @@ a clean, tested, from-scratch implementation on a modern stack.
 - 📱 **Web interface over WiFi** — a full, branded management UI (for *Basisschool
   de Viejool*, Eksel): edit schedules and bell times, manage day-types and the
   weekly layout, a month calendar for holidays/exceptions, upload sounds, ring the
-  bell now, "silence today", and see history. Password protected, served over
-  HTTPS. See [`docs/screenshots/`](docs/screenshots).
-- 📡 **Headless onboarding** — with no known WiFi the Pi opens its own access
-  point + captive portal so you can configure WiFi with no internet. Reachable at
-  `viejoolbel.local` via mDNS.
+  bell now, "silence today", and see history. Password protected; reachable on the
+  local network and, for remote support, over the Tailscale tunnel (see below), which
+  encrypts all traffic end-to-end. See [`docs/screenshots/`](docs/screenshots).
+- 📡 **Headless onboarding** — preseed the site's WiFi before you ship it and the
+  device joins on power-up with zero on-site setup; if it isn't known in advance,
+  the Pi opens its own access point + captive portal so someone on-site can enter
+  it with no internet. Reachable at `viejoolbel.local` via mDNS.
 - 🌐 **Remote support without network changes** — a [Tailscale](https://tailscale.com)
   mesh VPN lets you reach the device from anywhere, behind NAT/firewall, without
   port-forwarding or any change to the school's network.
@@ -50,7 +52,9 @@ a clean, tested, from-scratch implementation on a modern stack.
 | [`docs/hardware.md`](docs/hardware.md) | Wiring, relay, amplifier, RTC, GPIO pinout |
 | [`docs/installation.md`](docs/installation.md) | Flashing & installing on the Pi |
 | [`docs/onboarding.md`](docs/onboarding.md) | Headless first-boot WiFi setup |
+| [`docs/monitoring.md`](docs/monitoring.md) | Alerting (ntfy + healthchecks.io), post-mortem log, offline safety net |
 | [`docs/remote-support.md`](docs/remote-support.md) | Tailscale remote access |
+| [`docs/public-access.md`](docs/public-access.md) | Public URL for staff (Cloudflare Tunnel + Access) |
 | [`docs/updates.md`](docs/updates.md) | How to publish a release and update the device |
 | [`docs/github-auth.md`](docs/github-auth.md) | Token setup so updates work on a private repo |
 | [`docs/PRINT-installatie.md`](docs/PRINT-installatie.md) | **Printable** Dutch install guide (for the installer) |

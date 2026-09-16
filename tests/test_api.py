@@ -156,6 +156,14 @@ def test_notify_settings_roundtrip(auth_client: TestClient):
     got = auth_client.get("/api/notify-settings").json()
     assert got["notify_webhook_url"] == "https://ntfy.sh/mine"
     assert got["heartbeat_url"] == "https://hc/x"
+    assert got["notify_on_start"] is True  # default on when the field is absent
+
+    # Unticking the startup-notice checkbox is persisted.
+    auth_client.post(
+        "/api/notify-settings",
+        data={"notify_webhook_url": "https://ntfy.sh/mine", "notify_on_start": "false"},
+    )
+    assert auth_client.get("/api/notify-settings").json()["notify_on_start"] is False
 
 
 def test_notify_test_requires_url(auth_client: TestClient):

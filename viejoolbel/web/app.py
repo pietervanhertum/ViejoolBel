@@ -8,6 +8,7 @@ and an in-memory database (see tests/conftest.py).
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
@@ -19,7 +20,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
-from .. import __version__, auth, updater
+from .. import ap, auth, updater, wifi
 from .. import backup as backup_mod
 from ..bell import BellController
 from ..config import Settings
@@ -29,6 +30,7 @@ from ..models import (
     CalendarRule,
     CalendarRuleKind,
     DayType,
+    EventLog,
     RingLog,
     RingSource,
     Sound,
@@ -39,8 +41,32 @@ from ..notify import Notifier
 from ..schedule_service import planned_rings_for, resolution_for
 from ..scheduler import BellScheduler
 
+logger = logging.getLogger(__name__)
+
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
+
+# Dutch localisation for user-facing dates. Python's strftime emits English
+# month/weekday names under the default C locale regardless of the app language,
+# and relying on a system nl_NL locale being installed on every device is fragile
+# — so we localise explicitly. Times are always shown 24-hour (never AM/PM).
+_NL_WEEKDAYS = [
+    "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag",
+]
+_NL_MONTHS = [
+    "", "januari", "februari", "maart", "april", "mei", "juni", "juli",
+    "augustus", "september", "oktober", "november", "december",
+]
+
+
+def nl_date(value: dt.date) -> str:
+    """A full Dutch date, e.g. 'woensdag 9 september 2026'."""
+    return f"{_NL_WEEKDAYS[value.weekday()]} {value.day} {_NL_MONTHS[value.month]} {value.year}"
+
+
+def nl_datetime(value: dt.datetime) -> str:
+    """A full Dutch date with 24-hour time, e.g. 'woensdag 9 september 2026 — 17:30'."""
+    return f"{nl_date(value)} — {value:%H:%M}"
 
 
 def require_login(request: Request) -> str:
@@ -55,13 +81,59 @@ def require_login(request: Request) -> str:
 LoggedIn = Annotated[str, Depends(require_login)]
 
 
+def _setup_cf_access_gate(app: FastAPI, settings: Settings) -> None:
+    """Install the Cloudflare Access gate when it is configured.
+
+    No-op unless both ``cf_access_team_domain`` and ``cf_access_aud`` are set. If
+    they are set but PyJWT (the ``[access]`` extra) is missing, we still install
+    the gate but in fail-closed mode: tunnel requests are denied while local
+    access and the bell keep working, and we log loudly so the misconfiguration
+    is discoverable.
+    """
+    if not (settings.cf_access_team_domain and settings.cf_access_aud):
+        return
+
+    from . import cf_access
+
+    verifier: cf_access.AccessVerifier | None
+    try:
+        verifier = cf_access.AccessVerifier(
+            settings.cf_access_team_domain, settings.cf_access_aud
+        )
+        logger.info(
+            "Cloudflare Access gate enabled (team=%s); tunnel requests require a "
+            "valid Access JWT.",
+            settings.cf_access_team_domain,
+        )
+    except ImportError:
+        verifier = None
+        logger.error(
+            "Cloudflare Access is configured but PyJWT is not installed. Denying "
+            "ALL tunnel requests until you reinstall with the [access] extra "
+            "(pip install 'viejoolbel[access]'). Local LAN access is unaffected."
+        )
+
+    @app.middleware("http")
+    async def _cf_access_gate(request: Request, call_next):
+        client_host = request.client.host if request.client else None
+        if cf_access.looks_like_tunnel_request(client_host, request.headers):
+            token = cf_access.extract_token(request.headers, request.cookies)
+            if verifier is None or not verifier.is_valid(token):
+                return JSONResponse(
+                    {"detail": "Cloudflare Access authentication required"},
+                    status_code=403,
+                )
+        return await call_next(request)
+
+
 def create_app(
     controller: BellController,
     scheduler: BellScheduler,
     settings: Settings,
     monitor: HealthMonitor | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="ViejoolBel", version=__version__)
+    app_version = updater.current_version(settings.data_dir)
+    app = FastAPI(title="ViejoolBel", version=app_version)
     app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, max_age=7 * 24 * 3600)
     app.state.controller = controller
     app.state.scheduler = scheduler
@@ -69,8 +141,17 @@ def create_app(
     app.state.monitor = monitor
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    templates.env.filters["nl_date"] = nl_date
+    templates.env.filters["nl_datetime"] = nl_datetime
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    # --- Cloudflare Access gate (optional; docs/public-access.md) --------
+    # When the device is published to a public URL through a Cloudflare Tunnel,
+    # require a valid Cloudflare Access JWT on requests that came in through the
+    # tunnel (loopback origin / Cloudflare edge headers). Direct LAN access is
+    # untouched. This is defence in depth on top of the password login.
+    _setup_cf_access_gate(app, settings)
 
     # --- auth routes -----------------------------------------------------
     # HTML pages must not be cached, so that after an update the browser re-fetches
@@ -86,7 +167,7 @@ def create_app(
     @app.get("/login", response_class=HTMLResponse)
     def login_form(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
-            request, "login.html", {"error": None, "version": __version__}
+            request, "login.html", {"error": None, "version": app_version}
         )
 
     @app.post("/login", response_model=None)
@@ -101,7 +182,7 @@ def create_app(
             return templates.TemplateResponse(
                 request,
                 "login.html",
-                {"error": "Invalid credentials", "version": __version__},
+                {"error": "Invalid credentials", "version": app_version},
                 status_code=401,
             )
         request.session["user"] = username
@@ -122,9 +203,18 @@ def create_app(
             resolution = resolution_for(s, now.date())
             plan = planned_rings_for(s, now.date())
             sounds = list(s.scalars(select(Sound)))
-            recent = list(
-                s.scalars(select(RingLog).order_by(RingLog.ts.desc()).limit(10))
-            )
+            # RingLog.ts is stored as naive UTC; show it in the device's timezone
+            # (the top clock already is), otherwise recent rings look off by the
+            # UTC offset (e.g. 20:00 instead of 22:00 in CEST).
+            recent = [
+                {
+                    "ts": r.ts.replace(tzinfo=dt.UTC).astimezone(now.tzinfo),
+                    "source": r.source,
+                    "sound_name": r.sound_name,
+                    "ok": r.ok,
+                }
+                for r in s.scalars(select(RingLog).order_by(RingLog.ts.desc()).limit(10))
+            ]
             silenced = get_setting(s, "silence_date", "") == now.date().isoformat()
             default_pw = auth.uses_default_password(s)
             webhook_url = get_setting(s, "notify_webhook_url", settings.notify_webhook_url)
@@ -134,7 +224,7 @@ def create_app(
             request,
             "dashboard.html",
             {
-                "version": __version__,
+                "version": app_version,
                 "now": now,
                 "resolution": resolution,
                 "plan": plan,
@@ -147,6 +237,8 @@ def create_app(
                 "health": report,
                 "webhook_url": webhook_url,
                 "heartbeat_url": heartbeat_url,
+                "relay_enabled": _relay_enabled(),
+                "default_sound_id": _default_sound_id(),
             },
         )
 
@@ -155,9 +247,21 @@ def create_app(
         return None if request.session.get("user") else RedirectResponse("/login", status_code=303)
 
     def _page(request: Request, template: str, active: str, **ctx: object) -> HTMLResponse:
-        base: dict[str, object] = {"version": __version__, "active": active}
+        base: dict[str, object] = {"version": app_version, "active": active}
         base.update(ctx)
         return templates.TemplateResponse(request, template, base)
+
+    def _relay_enabled() -> bool:
+        with session_scope() as s:
+            return get_setting(s, "relay_enabled", "1") != "0"
+
+    def _default_sound_id() -> int | None:
+        with session_scope() as s:
+            raw = get_setting(s, "default_sound_id", "")
+        try:
+            return int(raw) if raw else None
+        except ValueError:
+            return None
 
     @app.get("/roosters", response_class=HTMLResponse, response_model=None)
     def roosters_page(request: Request) -> HTMLResponse | RedirectResponse:
@@ -226,6 +330,8 @@ def create_app(
             day_type=day_type,
             events=events,
             sounds=sounds,
+            relay_enabled=_relay_enabled(),
+            default_sound_id=_default_sound_id(),
         )
 
     @app.get("/kalender", response_class=HTMLResponse, response_model=None)
@@ -280,15 +386,13 @@ def create_app(
         prev_y = y - 1 if m == 1 else y
         next_m = m % 12 + 1
         next_y = y + 1 if m == 12 else y
-        month_names = ["", "januari", "februari", "maart", "april", "mei", "juni", "juli",
-                       "augustus", "september", "oktober", "november", "december"]
         return _page(
             request,
             "kalender.html",
             "kalender",
             year=y,
             month=m,
-            month_name=month_names[m],
+            month_name=_NL_MONTHS[m],
             first_weekday=first_weekday,
             cells=cells,
             rules=rules,
@@ -315,7 +419,10 @@ def create_app(
                 }
                 for snd in s.scalars(select(Sound))
             ]
-        return _page(request, "geluiden.html", "geluiden", sounds=sounds)
+        return _page(
+            request, "geluiden.html", "geluiden", sounds=sounds,
+            default_sound_id=_default_sound_id(),
+        )
 
     @app.get("/instellingen", response_class=HTMLResponse, response_model=None)
     def instellingen_page(request: Request) -> HTMLResponse | RedirectResponse:
@@ -324,6 +431,9 @@ def create_app(
         with session_scope() as s:
             webhook_url = get_setting(s, "notify_webhook_url", settings.notify_webhook_url)
             heartbeat_url = get_setting(s, "heartbeat_url", settings.heartbeat_url)
+            notify_on_start = get_setting(
+                s, "notify_on_start", "1" if settings.notify_on_start else "0"
+            ) not in ("0", "false", "False", "")
             volume_db = int(get_setting(s, "volume_db", "0") or "0")
             default_pw = auth.uses_default_password(s)
         return _page(
@@ -332,9 +442,11 @@ def create_app(
             "instellingen",
             webhook_url=webhook_url,
             heartbeat_url=heartbeat_url,
+            notify_on_start=notify_on_start,
             volume_db=volume_db,
             timezone=settings.timezone,
             default_pw=default_pw,
+            relay_enabled=_relay_enabled(),
         )
 
     # --- status API ------------------------------------------------------
@@ -347,7 +459,7 @@ def create_app(
         nxt = scheduler.next_ring()
         return JSONResponse(
             {
-                "version": __version__,
+                "version": app_version,
                 "time": now.isoformat(),
                 "timezone": settings.timezone,
                 "closed": resolution.closed,
@@ -366,6 +478,31 @@ def create_app(
         report = monitor.evaluate_once()
         return JSONResponse(report.as_dict())
 
+    @app.get("/api/events")
+    def events(_: LoggedIn, limit: int = 50) -> JSONResponse:
+        """Durable operational event log (health transitions, offline safety-net),
+        newest first — the record for a post-mortem after the device recovers."""
+        limit = max(1, min(500, limit))
+        tz = scheduler.now().tzinfo
+        with session_scope() as s:
+            rows = list(
+                s.scalars(select(EventLog).order_by(EventLog.ts.desc()).limit(limit))
+            )
+        return JSONResponse(
+            {
+                "events": [
+                    {
+                        # Stored naive UTC; show in the device timezone like the rest.
+                        "ts": r.ts.replace(tzinfo=dt.UTC).astimezone(tz).isoformat(),
+                        "kind": r.kind,
+                        "level": r.level,
+                        "detail": r.detail,
+                    }
+                    for r in rows
+                ]
+            }
+        )
+
     @app.get("/api/notify-settings")
     def get_notify_settings(_: LoggedIn) -> JSONResponse:
         with session_scope() as s:
@@ -375,6 +512,10 @@ def create_app(
                         s, "notify_webhook_url", settings.notify_webhook_url
                     ),
                     "heartbeat_url": get_setting(s, "heartbeat_url", settings.heartbeat_url),
+                    "notify_on_start": get_setting(
+                        s, "notify_on_start", "1" if settings.notify_on_start else "0"
+                    )
+                    not in ("0", "false", "False", ""),
                 }
             )
 
@@ -383,10 +524,12 @@ def create_app(
         _: LoggedIn,
         notify_webhook_url: Annotated[str, Form()] = "",
         heartbeat_url: Annotated[str, Form()] = "",
+        notify_on_start: Annotated[bool, Form()] = True,
     ) -> JSONResponse:
         with session_scope() as s:
             set_setting(s, "notify_webhook_url", notify_webhook_url.strip())
             set_setting(s, "heartbeat_url", heartbeat_url.strip())
+            set_setting(s, "notify_on_start", "1" if notify_on_start else "0")
         return JSONResponse({"ok": True})
 
     @app.post("/api/notify-test")
@@ -491,6 +634,16 @@ def create_app(
                 raise HTTPException(409, "Sound is still used by one or more bell events")
             (settings.sounds_dir / snd.filename).unlink(missing_ok=True)
             s.delete(snd)
+            if get_setting(s, "default_sound_id", "") == str(sound_id):
+                set_setting(s, "default_sound_id", "")  # the default was deleted
+        return JSONResponse({"ok": True})
+
+    @app.post("/api/sounds/{sound_id}/default")
+    def set_default_sound(_: LoggedIn, sound_id: int) -> JSONResponse:
+        with session_scope() as s:
+            if s.get(Sound, sound_id) is None:
+                raise HTTPException(404, "No such sound")
+            set_setting(s, "default_sound_id", str(sound_id))
         return JSONResponse({"ok": True})
 
     @app.get("/api/sounds/{sound_id}/audio")
@@ -841,10 +994,118 @@ def create_app(
             set_setting(s, "volume_db", str(volume_db))
         return JSONResponse({"ok": True})
 
+    @app.post("/api/settings/relay")
+    def set_relay_enabled(_: LoggedIn, enabled: Annotated[bool, Form()] = True) -> JSONResponse:
+        with session_scope() as s:
+            set_setting(s, "relay_enabled", "1" if enabled else "0")
+        return JSONResponse({"ok": True, "relay_enabled": enabled})
+
+    # --- WiFi ------------------------------------------------------------
+    @app.get("/api/wifi/scan")
+    def wifi_scan(_: LoggedIn) -> JSONResponse:
+        return JSONResponse(
+            {
+                "supported": wifi.available(),
+                "networks": [n.as_dict() for n in wifi.scan()],
+            }
+        )
+
+    @app.get("/api/wifi/status")
+    def wifi_status(_: LoggedIn) -> JSONResponse:
+        return JSONResponse(
+            {"supported": wifi.available(), "current_ssid": wifi.current_ssid()}
+        )
+
+    @app.post("/api/wifi/connect")
+    def wifi_connect(
+        _: LoggedIn,
+        ssid: Annotated[str, Form()],
+        password: Annotated[str, Form()] = "",
+    ) -> JSONResponse:
+        if not ssid.strip():
+            raise HTTPException(400, "Geef een netwerknaam (SSID) op.")
+        ok, detail = wifi.connect(ssid, password, settings.wifi_script)
+        return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
+
+    @app.get("/api/wifi/saved")
+    def wifi_saved(_: LoggedIn) -> JSONResponse:
+        return JSONResponse(
+            {
+                "supported": wifi.available(),
+                "networks": [n.as_dict() for n in wifi.saved_networks()],
+            }
+        )
+
+    @app.post("/api/wifi/forget")
+    def wifi_forget(_: LoggedIn, name: Annotated[str, Form()]) -> JSONResponse:
+        if not name.strip():
+            raise HTTPException(400, "Geen netwerk opgegeven.")
+        ok, detail = wifi.forget(name)
+        return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
+
+    @app.post("/api/wifi/prefer")
+    def wifi_prefer(_: LoggedIn, name: Annotated[str, Form()]) -> JSONResponse:
+        if not name.strip():
+            raise HTTPException(400, "Geen netwerk opgegeven.")
+        ok, detail = wifi.prefer(name)
+        return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
+
+    @app.get("/api/wifi/diagnostics")
+    def wifi_diagnostics(_: LoggedIn) -> JSONResponse:
+        return JSONResponse({"report": wifi.diagnostics()})
+
+    # --- onboarding access point ----------------------------------------
+    @app.get("/api/ap/status")
+    def ap_status(_: LoggedIn) -> JSONResponse:
+        data = ap.status(settings.ap_control_script)
+        with session_scope() as s:
+            raw = get_setting(s, "ap_fallback_minutes", str(settings.ap_fallback_minutes))
+            raw_rec = get_setting(
+                s, "ap_fallback_recovery_minutes", str(settings.ap_fallback_recovery_minutes)
+            )
+        try:
+            data["fallback_minutes"] = int(raw)
+        except (TypeError, ValueError):
+            data["fallback_minutes"] = settings.ap_fallback_minutes
+        try:
+            data["recovery_minutes"] = int(raw_rec)
+        except (TypeError, ValueError):
+            data["recovery_minutes"] = settings.ap_fallback_recovery_minutes
+        return JSONResponse(data)
+
+    @app.post("/api/ap/fallback")
+    def ap_set_fallback(
+        _: LoggedIn,
+        minutes: Annotated[int, Form()],
+        recovery_minutes: Annotated[int | None, Form()] = None,
+    ) -> JSONResponse:
+        if not 0 <= minutes <= 240:
+            raise HTTPException(400, "minuten moet tussen 0 en 240 liggen")
+        if recovery_minutes is not None and not 0 <= recovery_minutes <= 60:
+            raise HTTPException(400, "herstart-minuten moet tussen 0 en 60 liggen")
+        with session_scope() as s:
+            set_setting(s, "ap_fallback_minutes", str(minutes))
+            if recovery_minutes is not None:
+                set_setting(s, "ap_fallback_recovery_minutes", str(recovery_minutes))
+        body = {"ok": True, "fallback_minutes": minutes}
+        if recovery_minutes is not None:
+            body["recovery_minutes"] = recovery_minutes
+        return JSONResponse(body)
+
+    @app.post("/api/ap/enabled")
+    def ap_set_enabled(_: LoggedIn, enabled: Annotated[bool, Form()]) -> JSONResponse:
+        ok, detail = ap.set_enabled(settings.ap_control_script, enabled)
+        return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
+
+    @app.post("/api/ap/test")
+    def ap_test(_: LoggedIn, minutes: Annotated[int, Form()] = 5) -> JSONResponse:
+        ok, detail = ap.start_test(settings.ap_control_script, minutes)
+        return JSONResponse({"ok": ok, "detail": detail}, status_code=200 if ok else 502)
+
     # --- software update -------------------------------------------------
     @app.get("/api/update/check")
     def update_check(_: LoggedIn) -> JSONResponse:
-        current = updater.current_version()
+        current = updater.current_version(settings.data_dir)
         info = updater.check_latest(settings.update_repo, token=settings.github_token or None)
         if info is None:
             return JSONResponse(
@@ -857,7 +1118,7 @@ def create_app(
             )
         return JSONResponse(
             {
-                "available": updater.is_newer(info.tag),
+                "available": updater.is_newer(info.tag, current),
                 "current": current,
                 "latest": info.tag,
                 "notes": info.notes,
