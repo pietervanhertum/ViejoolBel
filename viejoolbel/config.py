@@ -30,6 +30,17 @@ class Settings(BaseSettings):
     # the installer generates a random one.
     secret_key: str = "dev-insecure-change-me"
 
+    # --- Public access via Cloudflare Access (optional) ---
+    # When BOTH are set, requests that arrive through the Cloudflare Tunnel (i.e.
+    # from loopback) must carry a valid Cloudflare Access JWT, verified against
+    # your team's public keys. Direct access on the LAN (viejoolbel.local:8080)
+    # is unaffected and still uses the app password. Empty = disabled.
+    # See docs/public-access.md. Requires the [access] extra (PyJWT); if it is
+    # configured but PyJWT is missing, tunnel requests are DENIED (fail closed)
+    # while local access and the bell keep working.
+    cf_access_team_domain: str = ""  # e.g. "ottorosie.cloudflareaccess.com"
+    cf_access_aud: str = ""  # Application Audience (AUD) tag from the Access app
+
     # --- Localisation ---
     timezone: str = "Europe/Brussels"
 

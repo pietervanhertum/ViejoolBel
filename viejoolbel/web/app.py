@@ -8,6 +8,7 @@ and an in-memory database (see tests/conftest.py).
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
@@ -39,6 +40,8 @@ from ..monitor import HealthMonitor
 from ..notify import Notifier
 from ..schedule_service import planned_rings_for, resolution_for
 from ..scheduler import BellScheduler
+
+logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -78,6 +81,51 @@ def require_login(request: Request) -> str:
 LoggedIn = Annotated[str, Depends(require_login)]
 
 
+def _setup_cf_access_gate(app: FastAPI, settings: Settings) -> None:
+    """Install the Cloudflare Access gate when it is configured.
+
+    No-op unless both ``cf_access_team_domain`` and ``cf_access_aud`` are set. If
+    they are set but PyJWT (the ``[access]`` extra) is missing, we still install
+    the gate but in fail-closed mode: tunnel requests are denied while local
+    access and the bell keep working, and we log loudly so the misconfiguration
+    is discoverable.
+    """
+    if not (settings.cf_access_team_domain and settings.cf_access_aud):
+        return
+
+    from . import cf_access
+
+    verifier: cf_access.AccessVerifier | None
+    try:
+        verifier = cf_access.AccessVerifier(
+            settings.cf_access_team_domain, settings.cf_access_aud
+        )
+        logger.info(
+            "Cloudflare Access gate enabled (team=%s); tunnel requests require a "
+            "valid Access JWT.",
+            settings.cf_access_team_domain,
+        )
+    except ImportError:
+        verifier = None
+        logger.error(
+            "Cloudflare Access is configured but PyJWT is not installed. Denying "
+            "ALL tunnel requests until you reinstall with the [access] extra "
+            "(pip install 'viejoolbel[access]'). Local LAN access is unaffected."
+        )
+
+    @app.middleware("http")
+    async def _cf_access_gate(request: Request, call_next):
+        client_host = request.client.host if request.client else None
+        if cf_access.looks_like_tunnel_request(client_host, request.headers):
+            token = cf_access.extract_token(request.headers, request.cookies)
+            if verifier is None or not verifier.is_valid(token):
+                return JSONResponse(
+                    {"detail": "Cloudflare Access authentication required"},
+                    status_code=403,
+                )
+        return await call_next(request)
+
+
 def create_app(
     controller: BellController,
     scheduler: BellScheduler,
@@ -97,6 +145,13 @@ def create_app(
     templates.env.filters["nl_datetime"] = nl_datetime
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    # --- Cloudflare Access gate (optional; docs/public-access.md) --------
+    # When the device is published to a public URL through a Cloudflare Tunnel,
+    # require a valid Cloudflare Access JWT on requests that came in through the
+    # tunnel (loopback origin / Cloudflare edge headers). Direct LAN access is
+    # untouched. This is defence in depth on top of the password login.
+    _setup_cf_access_gate(app, settings)
 
     # --- auth routes -----------------------------------------------------
     # HTML pages must not be cached, so that after an update the browser re-fetches

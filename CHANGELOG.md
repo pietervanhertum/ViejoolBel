@@ -31,6 +31,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
     site met stroomuitval (zie `docs/hardware.md`).
 
 ### Added
+- **Publieke URL voor personeel via Cloudflare Tunnel + Access.** Personeel dat
+  Tailscale niet kan/wil installeren kan de webinterface nu bereiken op een
+  publiek, met login beschermd adres (bv. `https://bel.ottorosie.com`) — nog
+  steeds **zonder** port-forwarding of aanpassingen aan het schoolnetwerk (FR-21).
+  `cloudflared` maakt enkel uitgaande verbindingen (net als Tailscale), en
+  **Cloudflare Access** authenticeert de bezoeker aan de rand met een échte
+  identiteit per persoon (e-mailcode/SSO, MFA, intrekbaar) vóór het verkeer de Pi
+  bereikt. Ter aanvulling verifieert de app zelf het Cloudflare Access-JWT, zodat
+  de UI niet via de publieke hostname bereikbaar is zonder eerst Access te passeren
+  (verdediging in de diepte, bovenop het app-wachtwoord).
+  - Instelbaar via `VIEJOOLBEL_CF_ACCESS_TEAM_DOMAIN` + `VIEJOOLBEL_CF_ACCESS_AUD`;
+    de gate geldt enkel voor verkeer dat via de tunnel binnenkomt (loopback), het
+    schoolnetwerk (`viejoolbel.local:8080`) blijft ongemoeid. Zonder de nieuwe
+    `[access]`-extra weigert de gate tunnelverkeer (faalt veilig dicht) terwijl
+    lokaal gebruik én de bel gewoon blijven werken.
+  - Het bellen draait lokaal: een internet-/Cloudflare-storing betekent "geen
+    externe UI", nooit "geen bel".
+  - Nieuwe helper `deploy/cloudflared/install-cloudflared.sh`, een tunnel-config
+    (`config.example.yml`) en systemd-unit, en een volledige handleiding in
+    [`docs/public-access.md`](docs/public-access.md).
 - **"Voorkeur"-knop bij opgeslagen WiFi-netwerken.** In Instellingen → WiFi kun je
   nu bij elk opgeslagen netwerk op **Voorkeur** klikken: dat tilt de
   autoconnect-prioriteit boven alle andere profielen én schakelt er meteen naartoe.

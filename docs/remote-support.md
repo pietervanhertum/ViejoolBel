@@ -32,6 +32,13 @@ sudo tailscale up --ssh --hostname viejoolbel --authkey tskey-xxxxxxxx
 Consider tagging devices (e.g. `--advertise-tags=tag:bell`) and using ACLs so a
 support account can reach only the bell devices.
 
+## Staff who can't install Tailscale
+Tailscale is ideal for *your own* support access, but it needs the client
+installed on every device. To let school staff reach the UI from any browser at a
+public, login-protected URL (e.g. `https://bel.ottorosie.com`) — still without
+port-forwarding or network changes — see [`public-access.md`](public-access.md)
+(Cloudflare Tunnel + Cloudflare Access). The two approaches coexist.
+
 ## Alternatives considered
 - **ZeroTier** — equivalent mesh VPN; swap the install step if you prefer it.
 - **Reverse SSH tunnel to your own VPS** — no third-party service, but you operate

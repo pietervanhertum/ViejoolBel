@@ -1,0 +1,21 @@
+[Unit]
+Description=ViejoolBel Cloudflare Tunnel (remote web access)
+After=network-online.target
+Wants=network-online.target
+# Remote access ONLY. The bell must keep ringing even if this connector is down
+# or misconfigured, so the bell service (viejoolbel.service) deliberately does
+# NOT depend on this unit. A Cloudflare or internet outage means "no remote UI",
+# never "no bell" — on-site the UI is still reachable at viejoolbel.local:8080.
+StartLimitIntervalSec=0
+
+[Service]
+# Mirrors the unit that `cloudflared service install` generates: runs the
+# locally-managed tunnel from /etc/cloudflared/config.yml and always comes back
+# after a crash or a power cut (self-healing, like the rest of the system).
+TimeoutStartSec=0
+ExecStart=/usr/bin/cloudflared --no-autoupdate --config /etc/cloudflared/config.yml tunnel run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
